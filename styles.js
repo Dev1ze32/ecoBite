@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     height: 180,
     borderRadius: 24,
     overflow: 'hidden',
-    marginBottom: 32,
+    marginBottom: 25,
     elevation: 12,
     shadowColor: '#000',
     shadowOpacity: 0.2,
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
 
   // Modern Services Section
   servicesSection: {
-    marginBottom: 32,
+    marginBottom: 20,
   },
   sectionTitle: {
     fontSize: 22,
@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 24,
-    marginBottom: 30,
+    marginBottom: 40,
     shadowColor: '#F59E0B',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,

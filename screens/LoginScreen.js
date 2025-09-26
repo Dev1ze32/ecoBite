@@ -1,45 +1,492 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Platform,
-  Alert,
-  ScrollView,
-  Keyboard,
-  Dimensions,
-} from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import {View,Text,TextInput,TouchableOpacity,Platform,Alert,ScrollView,Keyboard,Modal,KeyboardAvoidingView,} from 'react-native';
+import styles from './styles/loginScreenStyle';
+import { registerUser, login } from '../data/auth'; // Import auth functions
 
-const { width, height } = Dimensions.get('window');
+// User Type Dropdown Component
+const UserTypeDropdown = ({ selectedType, onSelect, isOpen, onToggle }) => {
+  const userTypes = [
+    { value: 'household', label: '🏠 Household', description: 'For families and individuals' },
+    { value: 'restaurant', label: '🍽️ Restaurant', description: 'For restaurants and cafes' }
+  ];
+
+  return (
+    <View style={styles.dropdownContainer}>
+      <TouchableOpacity 
+        style={[styles.dropdownButton, isOpen && styles.dropdownButtonActive]}
+        onPress={onToggle}
+        activeOpacity={0.8}
+      >
+        <View style={styles.inputIcon}>
+          <Text style={styles.inputIconText}>🏢</Text>
+        </View>
+        <View style={styles.dropdownContent}>
+          <Text style={styles.dropdownSelectedText}>
+            {selectedType ? userTypes.find(type => type.value === selectedType)?.label : 'Select Account Type'}
+          </Text>
+          <Text style={styles.dropdownArrow}>{isOpen ? '▲' : '▼'}</Text>
+        </View>
+      </TouchableOpacity>
+
+      {isOpen && (
+        <View style={styles.dropdownList}>
+          {userTypes.map((type) => (
+            <TouchableOpacity
+              key={type.value}
+              style={[
+                styles.dropdownItem,
+                selectedType === type.value && styles.dropdownItemSelected
+              ]}
+              onPress={() => onSelect(type.value)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.dropdownItemContent}>
+                <Text style={[
+                  styles.dropdownItemLabel,
+                  selectedType === type.value && styles.dropdownItemLabelSelected
+                ]}>
+                  {type.label}
+                </Text>
+                <Text style={[
+                  styles.dropdownItemDescription,
+                  selectedType === type.value && styles.dropdownItemDescriptionSelected
+                ]}>
+                  {type.description}
+                </Text>
+              </View>
+              {selectedType === type.value && (
+                <Text style={styles.dropdownCheckmark}>✓</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+};
+
+// Updated SignUpModal component with Supabase integration
+const SignUpModal = ({ visible, onClose, onSignUp, isLoading }) => {
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    username: '',
+    password: '',
+    userType: '',
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // Refs to prevent re-render issues
+  const firstNameRef = useRef(null);
+  const lastNameRef = useRef(null);
+  const emailRef = useRef(null);
+  const usernameRef = useRef(null);
+  const passwordRef = useRef(null);
+
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleUserTypeSelect = (userType) => {
+    handleInputChange('userType', userType);
+    setIsDropdownOpen(false);
+  };
+
+  const toggleDropdown = () => {
+    setIsDropdownOpen(!isDropdownOpen);
+  };
+
+  const handleSubmit = () => {
+    if (!formData.userType) {
+      Alert.alert('Error', 'Please select an account type');
+      return;
+    }
+    onSignUp(formData);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      username: '',
+      password: '',
+      userType: '',
+    });
+    setShowPassword(false);
+    setIsDropdownOpen(false);
+  };
+
+  const handleClose = () => {
+    Keyboard.dismiss(); // Dismiss keyboard before closing
+    resetForm();
+    onClose();
+  };
+
+  // Reset form when modal becomes visible
+  React.useEffect(() => {
+    if (visible) {
+      resetForm();
+    }
+  }, [visible]);
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={handleClose}
+      statusBarTranslucent={true}
+    >
+      {/* Updated Modal Overlay - now 90% of screen */}
+      <View style={styles.modalOverlay}>
+        {/* Backdrop that dismisses modal */}
+        <TouchableOpacity 
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={handleClose}
+        />
+        
+        {/* Modal Content Container - Updated for 90% height */}
+        <View style={styles.modalContentWrapper}>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingContainer}
+            keyboardVerticalOffset={0}
+          >
+            <View style={styles.modalContainer}>
+              {/* Modal Header */}
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Join EcoBite! 🌱</Text>
+                <Text style={styles.modalSubtitle}>Start your eco-friendly journey</Text>
+                <TouchableOpacity 
+                  style={styles.closeButton}
+                  onPress={handleClose}
+                >
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Sign Up Form */}
+              <ScrollView 
+                style={styles.modalForm}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.formContent}
+              >
+                {/* Name Row */}
+                <View style={styles.nameRow}>
+                  <View style={[styles.inputContainer, styles.halfWidth]}>
+                    <View style={styles.inputWrapper}>
+                      <View style={styles.inputIcon}>
+                        <Text style={styles.inputIconText}>👤</Text>
+                      </View>
+                      <TextInput
+                        ref={firstNameRef}
+                        style={styles.textInput}
+                        placeholder="First Name"
+                        placeholderTextColor="#999"
+                        value={formData.firstName}
+                        onChangeText={(text) => handleInputChange('firstName', text)}
+                        autoCapitalize="words"
+                        returnKeyType="next"
+                        onSubmitEditing={() => lastNameRef.current?.focus()}
+                        blurOnSubmit={false}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={[styles.inputContainer, styles.halfWidth]}>
+                    <View style={styles.inputWrapper}>
+                      <View style={styles.inputIcon}>
+                        <Text style={styles.inputIconText}>👤</Text>
+                      </View>
+                      <TextInput
+                        ref={lastNameRef}
+                        style={styles.textInput}
+                        placeholder="Last Name"
+                        placeholderTextColor="#999"
+                        value={formData.lastName}
+                        onChangeText={(text) => handleInputChange('lastName', text)}
+                        autoCapitalize="words"
+                        returnKeyType="next"
+                        onSubmitEditing={() => emailRef.current?.focus()}
+                        blurOnSubmit={false}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                {/* Email */}
+                <View style={styles.inputContainer}>
+                  <View style={styles.inputWrapper}>
+                    <View style={styles.inputIcon}>
+                      <Text style={styles.inputIconText}>📧</Text>
+                    </View>
+                    <TextInput
+                      ref={emailRef}
+                      style={styles.textInput}
+                      placeholder="Email Address"
+                      placeholderTextColor="#999"
+                      value={formData.email}
+                      onChangeText={(text) => handleInputChange('email', text)}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      returnKeyType="next"
+                      onSubmitEditing={() => usernameRef.current?.focus()}
+                      blurOnSubmit={false}
+                    />
+                  </View>
+                </View>
+
+                {/* Username */}
+                <View style={styles.inputContainer}>
+                  <View style={styles.inputWrapper}>
+                    <View style={styles.inputIcon}>
+                      <Text style={styles.inputIconText}>🏷️</Text>
+                    </View>
+                    <TextInput
+                      ref={usernameRef}
+                      style={styles.textInput}
+                      placeholder="Username"
+                      placeholderTextColor="#999"
+                      value={formData.username}
+                      onChangeText={(text) => handleInputChange('username', text)}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                      blurOnSubmit={false}
+                    />
+                  </View>
+                </View>
+
+                {/* Password */}
+                <View style={styles.inputContainer}>
+                  <View style={styles.inputWrapper}>
+                    <View style={styles.inputIcon}>
+                      <Text style={styles.inputIconText}>🔒</Text>
+                    </View>
+                    <TextInput
+                      ref={passwordRef}
+                      style={styles.textInput}
+                      placeholder="Password"
+                      placeholderTextColor="#999"
+                      value={formData.password}
+                      onChangeText={(text) => handleInputChange('password', text)}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="done"
+                      onSubmitEditing={() => !isDropdownOpen && toggleDropdown()}
+                      blurOnSubmit={false}
+                    />
+                    <TouchableOpacity 
+                      style={styles.eyeButton}
+                      onPress={() => setShowPassword(!showPassword)}
+                    >
+                      <Text style={styles.eyeIcon}>
+                        {showPassword ? '👁️' : '👁️‍🗨️'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* User Type Dropdown */}
+                <View style={styles.inputContainer}>
+                  <UserTypeDropdown
+                    selectedType={formData.userType}
+                    onSelect={handleUserTypeSelect}
+                    isOpen={isDropdownOpen}
+                    onToggle={toggleDropdown}
+                  />
+                </View>
+
+                {/* Account Type Info */}
+                {formData.userType && (
+                  <View style={styles.accountTypeInfo}>
+                    <Text style={styles.accountTypeTitle}>
+                      {formData.userType === 'household' ? '🏠 Household Account' : '🍽️ Restaurant Account'}
+                    </Text>
+                    <Text style={styles.accountTypeDescription}>
+                      {formData.userType === 'household' 
+                        ? 'Perfect for families looking to reduce food waste at home. Track expiry dates, get recipe suggestions, and save money!'
+                        : 'Ideal for restaurants and cafes. Manage inventory, track food waste, optimize ordering, and boost your sustainability efforts!'
+                      }
+                    </Text>
+                  </View>
+                )}
+
+                {/* Sign Up Button */}
+                <TouchableOpacity 
+                  style={[styles.signUpButton, isLoading && styles.signUpButtonLoading]}
+                  onPress={handleSubmit}
+                  disabled={isLoading}
+                  activeOpacity={0.8}
+                >
+                  {isLoading ? (
+                    <View style={styles.loadingContainer}>
+                      <View style={styles.spinner} />
+                      <Text style={styles.signUpButtonText}>Creating Account...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.signUpButtonText}>Create Account</Text>
+                  )}
+                </TouchableOpacity>
+
+                {/* Terms */}
+                <Text style={styles.termsText}>
+                  By signing up, you agree to our{' '}
+                  <Text style={styles.termsLink}>Terms of Service</Text>
+                  {' '}and{' '}
+                  <Text style={styles.termsLink}>Privacy Policy</Text>
+                </Text>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 const LoginScreen = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Sign up modal states
+  const [showSignUpModal, setShowSignUpModal] = useState(false);
+  const [isSignUpLoading, setIsSignUpLoading] = useState(false);
 
+  // Updated login handler with Supabase integration
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
       Alert.alert('Error', 'Please enter both username and password');
       return;
     }
 
-    // Dismiss keyboard before login
     Keyboard.dismiss();
     setIsLoading(true);
 
-    // Simulate login delay
-    setTimeout(() => {
-      if (username === 'admin' && password === 'admin123') {
-        onLogin();
-      } else {
-        Alert.alert('Login Failed', 'Invalid username or password');
+    try {
+      // Use the login function from auth.js
+      const userData = await login(username.trim(), password);
+      
+      // Login successful
+      console.log('Login successful:', userData);
+      
+      // Pass user data to parent component
+      onLogin(userData);
+      
+    } catch (error) {
+      console.error('Login error:', error);
+      
+      // Show appropriate error message
+      let errorMessage = 'Login failed. Please try again.';
+      if (error.message === 'User not found') {
+        errorMessage = 'Username not found. Please check your username or sign up.';
+      } else if (error.message === 'Invalid password') {
+        errorMessage = 'Incorrect password. Please try again.';
+      } else if (error.message) {
+        errorMessage = error.message;
       }
+      
+      Alert.alert('Login Failed', errorMessage);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
+
+  // Updated sign up handler with Supabase integration
+  const handleSignUp = useCallback(async (formData) => {
+    const { firstName, lastName, email, username: signUpUsername, password: signUpPassword, userType } = formData;
+    
+    // Validation
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !signUpUsername.trim() || !signUpPassword.trim() || !userType) {
+      Alert.alert('Error', 'Please fill in all fields and select an account type');
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    // Password strength validation (optional - you can customize this)
+    if (signUpPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
+    }
+
+    setIsSignUpLoading(true);
+
+    try {
+      // Use the registerUser function from auth.js
+      const userData = await registerUser(
+        firstName.trim(),
+        lastName.trim(),
+        email.trim().toLowerCase(),
+        signUpUsername.trim().toLowerCase(),
+        signUpPassword,
+        userType
+      );
+
+      // Registration successful
+      console.log('Registration successful:', userData);
+      
+      setIsSignUpLoading(false);
+      
+      // Show success message with user type
+      const accountTypeText = userType === 'household' ? 'Household' : 'Restaurant';
+      Alert.alert(
+        'Registration Successful! 🎉',
+        `Your ${accountTypeText} account has been created successfully! Welcome to EcoBite, ${firstName}! You can now sign in with your credentials.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setShowSignUpModal(false);
+              // Optionally pre-fill the login form with the new username
+              setUsername(signUpUsername.trim().toLowerCase());
+            }
+          }
+        ]
+      );
+      
+    } catch (error) {
+      console.error('Registration error:', error);
+      setIsSignUpLoading(false);
+      
+      // Show appropriate error message
+      let errorMessage = 'Registration failed. Please try again.';
+      if (error.message === 'Email already registered') {
+        errorMessage = 'This email is already registered. Please use a different email or try logging in.';
+      } else if (error.message === 'Username already taken') {
+        errorMessage = 'This username is already taken. Please choose a different username.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('Registration Failed', errorMessage);
+    }
+  }, []);
+
+  const openSignUpModal = useCallback(() => {
+    setShowSignUpModal(true);
+  }, []);
+
+  const closeSignUpModal = useCallback(() => {
+    setShowSignUpModal(false);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -73,19 +520,19 @@ const LoginScreen = ({ onLogin }) => {
           
           {/* Stats Cards */}
           <View style={styles.statsContainer}>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>45K</Text>
-                <Text style={styles.statLabel}>Food Saved</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>12M</Text>
-                <Text style={styles.statLabel}>Money Saved</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>8.5K</Text>
-                <Text style={styles.statLabel}>Users</Text>
-              </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>45K</Text>
+              <Text style={styles.statLabel}>Food Saved</Text>
             </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>12M</Text>
+              <Text style={styles.statLabel}>Money Saved</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>8.5K</Text>
+              <Text style={styles.statLabel}>Users</Text>
+            </View>
+          </View>
         </View>
 
         {/* Login Form */}
@@ -109,9 +556,6 @@ const LoginScreen = ({ onLogin }) => {
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="next"
-                  onSubmitEditing={() => {
-                    // Focus next input if needed
-                  }}
                 />
               </View>
             </View>
@@ -145,11 +589,10 @@ const LoginScreen = ({ onLogin }) => {
               </View>
             </View>
 
-            {/* Demo Credentials */}
+            {/* Demo Credentials - Remove this in production */}
             <View style={styles.demoContainer}>
-              <Text style={styles.demoTitle}>Demo Credentials:</Text>
-              <Text style={styles.demoText}>Username: admin</Text>
-              <Text style={styles.demoText}>Password: admin123</Text>
+              <Text style={styles.demoTitle}>Demo Mode:</Text>
+              <Text style={styles.demoText}>Create an account or use existing credentials</Text>
             </View>
 
             {/* Login Button */}
@@ -184,7 +627,7 @@ const LoginScreen = ({ onLogin }) => {
             {/* Social Login */}
             <View style={styles.socialContainer}>
               <TouchableOpacity style={styles.socialButton}>
-                <Text style={styles.socialIcon}>🍎</Text>
+                <Text style={styles.socialIcon}>🎎</Text>
                 <Text style={styles.socialText}>Apple</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.socialButton}>
@@ -196,7 +639,7 @@ const LoginScreen = ({ onLogin }) => {
             {/* Sign Up */}
             <View style={styles.signupContainer}>
               <Text style={styles.signupText}>Don't have an account? </Text>
-              <TouchableOpacity>
+              <TouchableOpacity onPress={openSignUpModal}>
                 <Text style={styles.signupLink}>Sign Up</Text>
               </TouchableOpacity>
             </View>
@@ -208,336 +651,16 @@ const LoginScreen = ({ onLogin }) => {
           <Text style={styles.bottomText}>🌍 Save Food • Save Planet • Save Money</Text>
         </View>
       </ScrollView>
+
+      {/* Sign Up Modal */}
+      <SignUpModal 
+        visible={showSignUpModal}
+        onClose={closeSignUpModal}
+        onSignUp={handleSignUp}
+        isLoading={isSignUpLoading}
+      />
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#2ECC71',
-  },
-  scrollContainer: {
-    flexGrow: 1,
-  },
-  backgroundOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#2ECC71',
-  },
-  
-  // Floating Elements
-  floatingElement1: {
-    position: 'absolute',
-    top: 100,
-    right: 30,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  floatingElement2: {
-    position: 'absolute',
-    top: 200,
-    left: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  floatingElement3: {
-    position: 'absolute',
-    top: 150,
-    left: width * 0.7,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-
-  // Header Section
-  headerSection: {
-    alignItems: 'center',
-    paddingTop: Platform.OS === 'android' ? 60 : 60,
-    paddingBottom: 40,
-    zIndex: 2,
-  },
-  logoContainer: {
-    marginBottom: 20,
-  },
-  logo: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  logoIcon: {
-    fontSize: 50,
-  },
-  appName: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 5,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
-  },
-  tagline: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginBottom: 30,
-    fontWeight: '500',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-    paddingHorizontal: 40,
-  },
-  statCard: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 15,
-    minWidth: 80,
-  },
-  statNumber: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 5,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '500',
-  },
-
-  // Form Section
-  formContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    zIndex: 3,
-  },
-  formCard: {
-    backgroundColor: '#fff',
-    borderRadius: 25,
-    padding: 30,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 15,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 25,
-    elevation: 15,
-  },
-  welcomeText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitleText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 30,
-  },
-
-  // Input Styles
-  inputContainer: {
-    marginBottom: 20,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 15,
-    paddingHorizontal: 15,
-    paddingVertical: 5,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  inputIcon: {
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  inputIconText: {
-    fontSize: 18,
-  },
-  textInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
-    paddingVertical: 15,
-  },
-  eyeButton: {
-    padding: 5,
-  },
-  eyeIcon: {
-    fontSize: 18,
-  },
-
-  // Demo Credentials
-  demoContainer: {
-    backgroundColor: '#E8F5E8',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 25,
-    borderLeftWidth: 4,
-    borderLeftColor: '#2ECC71',
-  },
-  demoTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2ECC71',
-    marginBottom: 5,
-  },
-  demoText: {
-    fontSize: 13,
-    color: '#555',
-    fontFamily: 'monospace',
-  },
-
-  // Button Styles
-  loginButton: {
-    backgroundColor: '#2ECC71',
-    borderRadius: 15,
-    paddingVertical: 18,
-    marginBottom: 15,
-    shadowColor: '#2ECC71',
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  loginButtonLoading: {
-    backgroundColor: '#95D5B2',
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  spinner: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#fff',
-    borderTopColor: 'transparent',
-    marginRight: 10,
-  },
-  loginButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  forgotPassword: {
-    alignSelf: 'center',
-    marginBottom: 25,
-  },
-  forgotPasswordText: {
-    color: '#2ECC71',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-
-  // Divider
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 25,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E0E0E0',
-  },
-  dividerText: {
-    marginHorizontal: 15,
-    color: '#999',
-    fontSize: 14,
-  },
-
-  // Social Login
-  socialContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 25,
-  },
-  socialButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    flex: 0.48,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  socialIcon: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  socialText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-
-  // Sign Up
-  signupContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  signupText: {
-    color: '#666',
-    fontSize: 14,
-  },
-  signupLink: {
-    color: '#2ECC71',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // Bottom Decoration
-  bottomDecoration: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  bottomText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '500',
-  },
-});
 
 export default LoginScreen;
