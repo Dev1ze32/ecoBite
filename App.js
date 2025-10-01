@@ -132,7 +132,10 @@ export default function App() {
     return <InventoryScreen navigation={{ goBack: handleBackToHome }} />
   }
   if (currentScreen === 'profile') {
-    return <ProfileScreen navigation={{ goBack: handleBackToHome }} />
+    return <ProfileScreen 
+      navigation={{ goBack: handleBackToHome }} 
+      onLogout={handleLogout}  // Add this line
+    />
   }
   if (currentScreen === 'cart') {
     return <CartScreen navigation={{ goBack: handleBackToHome }} />

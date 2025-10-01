@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {View,Text,ScrollView,TouchableOpacity,Image,Alert,Switch} from 'react-native';
 import styles from './styles/profileScreenStyles';
 
-const ProfileScreen = ({ navigation }) => {
+const ProfileScreen = ({ navigation, onLogout }) => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [donationReminders, setDonationReminders] = useState(true);
 
@@ -26,10 +26,15 @@ const ProfileScreen = ({ navigation }) => {
       "Are you sure you want to logout?",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Logout", style: "destructive", onPress: () => {
-          // Handle logout logic here
-          Alert.alert("Logged out successfully!");
-        }}
+        { 
+          text: "Logout", 
+          style: "destructive", 
+          onPress: () => {
+            if (onLogout) {
+              onLogout(); // This will take user back to login screen
+            }
+          }
+        }
       ]
     );
   };
