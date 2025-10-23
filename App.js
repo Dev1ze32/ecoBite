@@ -1,4 +1,4 @@
-import { View, Text, FlatList, TouchableOpacity, Image, ScrollView } from 'react-native'
+import { View, Text, FlatList, TouchableOpacity, Image, ScrollView, ActivityIndicator } from 'react-native'
 import React, { useState } from 'react'
 import DonationScreen from './screens/DonationScreen'
 import InventoryScreen from './screens/InventoryScreen.js'
@@ -9,6 +9,9 @@ import SmartMealPlanScreen from './screens/SmartMealPlanScreen.js'
 import MoneySavedScreen from './screens/MoneySavedScreen.js'
 import MyImpactScreen from './screens/MyImpactScreen.js'
 import styles from './styles.js'
+
+// Import AuthProvider and useAuth
+import { AuthProvider, useAuth } from './data/AuthContext'
 
 const services = [
   { 
@@ -49,9 +52,12 @@ const soonToExpireItems = [
   { id: '4', name: 'Bananas', daysLeft: 2, icon: '🍌' },
 ]
 
-export default function App() {
+// Main App Component (wrapped with AuthProvider)
+function MainApp() {
+  // Get auth state and functions
+  const { isAuthenticated, isLoading, logout, user, getUsername, getUserId } = useAuth()
+  
   const [currentScreen, setCurrentScreen] = useState('home')
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const savingsData = [250, 10, 40, 95, 85, 91, 35, 12, 56, 42, 77, 23, 67, 12, 78, 21, 53, 75, 21, 11]
   
   // Calculate total savings
@@ -109,19 +115,25 @@ export default function App() {
     setCurrentScreen('profile')
   }
 
-  const handleLogin = () => {
-    setIsLoggedIn(true)
+  const handleLogout = async () => {
+    await logout()
     setCurrentScreen('home')
+    // AuthContext will automatically show LoginScreen
   }
 
-  const handleLogout = () => {
-    setIsLoggedIn(false)
-    setCurrentScreen('home')
+  // Show loading spinner while checking authentication
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#4ECDC4" />
+        <Text style={{ marginTop: 10, color: '#666' }}>Loading...</Text>
+      </View>
+    )
   }
 
   // Show login screen if not logged in
-  if (!isLoggedIn) {
-    return <LoginScreen onLogin={handleLogin} />
+  if (!isAuthenticated) {
+    return <LoginScreen />
   }
 
   // Handle screens
@@ -134,7 +146,7 @@ export default function App() {
   if (currentScreen === 'profile') {
     return <ProfileScreen 
       navigation={{ goBack: handleBackToHome }} 
-      onLogout={handleLogout}  // Add this line
+      onLogout={handleLogout}
     />
   }
   if (currentScreen === 'cart') {
@@ -157,6 +169,7 @@ export default function App() {
     />
   }
 
+  // Home Screen
   return (
     <View style={styles.container}>
       <ScrollView 
@@ -164,7 +177,7 @@ export default function App() {
         style={styles.scrollContainer}
         contentContainerStyle={{ paddingBottom: 120 }}
       >
-        {/* Header with enhanced greeting */}
+        {/* Header with enhanced greeting - now shows actual username */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
             <TouchableOpacity onPress={handleAvatarPress}>
@@ -177,7 +190,7 @@ export default function App() {
               </View>
             </TouchableOpacity>
             <View style={styles.greetingContainer}>
-              <Text style={styles.greeting}>Hello, Discaya! 👋</Text>
+              <Text style={styles.greeting}>Hello, {getUsername() || 'User'}! 👋</Text>
               <Text style={styles.subGreeting}>Let's reduce food waste today</Text>
             </View>
           </View>
@@ -366,5 +379,14 @@ export default function App() {
         </TouchableOpacity>
       </View>
     </View>
+  )
+}
+
+// Root App Component with AuthProvider
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   )
 }

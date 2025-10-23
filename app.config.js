@@ -1,4 +1,5 @@
 // app.config.js - This extends your existing app.json
+import 'dotenv/config';
 import appJson from './app.json';
 
 export default {

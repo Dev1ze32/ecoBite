@@ -1,24 +1,16 @@
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  ScrollView, 
-  KeyboardAvoidingView, 
-  Platform,
-  Alert,
-  ActivityIndicator,
-  StyleSheet
-} from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Modal } from 'react-native'
 import React, { useState, useRef, useEffect } from 'react'
+import styles from './styles/SmartMealPlanScreenStyles';
 
 // Internal prompt storage for future API usage
 let aiPromptStorage = {
-  prompts: [],
-  responses: [],
-  currentConversation: [],
+  conversations: {}, // Store multiple conversations by ID
   
-  addPrompt: function(prompt, response = null) {
+  addPrompt: function(conversationId, prompt, response = null) {
+    if (!this.conversations[conversationId]) {
+      this.conversations[conversationId] = []
+    }
+    
     const timestamp = new Date().toISOString()
     const promptData = {
       id: Date.now().toString(),
@@ -28,38 +20,52 @@ let aiPromptStorage = {
       category: 'meal-planning'
     }
     
-    this.prompts.push(promptData)
-    this.currentConversation.push(promptData)
+    this.conversations[conversationId].push(promptData)
     return promptData
   },
   
-  clearConversation: function() {
-    this.currentConversation = []
+  getConversation: function(conversationId) {
+    return this.conversations[conversationId] || []
   },
   
-  getAllPrompts: function() {
-    return this.prompts
+  deleteConversation: function(conversationId) {
+    delete this.conversations[conversationId]
   },
   
-  getConversationContext: function() {
-    return this.currentConversation
+  getAllConversations: function() {
+    return this.conversations
   }
 }
 
 const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
   const [currentPrompt, setCurrentPrompt] = useState('')
-  const [conversation, setConversation] = useState([
-    {
-      id: 'welcome',
-      type: 'ai',
-      message: "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?",
-      timestamp: new Date().toISOString()
-    }
-  ])
   const [isLoading, setIsLoading] = useState(false)
   const scrollViewRef = useRef(null)
+  
+  // Conversation tabs management
+  const [conversationTabs, setConversationTabs] = useState([
+    {
+      id: 'conv_1',
+      title: 'General Chat',
+      messages: [
+        {
+          id: 'welcome',
+          type: 'ai',
+          message: "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?",
+          timestamp: new Date().toISOString()
+        }
+      ],
+      createdAt: new Date().toISOString()
+    }
+  ])
+  const [activeTabId, setActiveTabId] = useState('conv_1')
+  const [showNewTabModal, setShowNewTabModal] = useState(false)
+  const [newTabTitle, setNewTabTitle] = useState('')
 
-  // Sample suggestions based on food waste prevention
+  // Get current active conversation
+  const activeConversation = conversationTabs.find(tab => tab.id === activeTabId)
+
+  // Sample suggestions
   const suggestions = [
     "Create a meal plan using my expiring ingredients",
     "What recipes can I make with leftover vegetables?",
@@ -72,14 +78,14 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
     if (scrollViewRef.current) {
       scrollViewRef.current.scrollToEnd({ animated: true })
     }
-  }, [conversation])
+  }, [activeConversation?.messages])
 
-  // Test AI responses (replace with actual API call later)
+  // Test AI responses
   const generateTestAIResponse = async (prompt) => {
     setIsLoading(true)
     
     // Store the prompt
-    aiPromptStorage.addPrompt(prompt)
+    aiPromptStorage.addPrompt(activeTabId, prompt)
     
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 1500))
@@ -114,7 +120,13 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
       timestamp: new Date().toISOString()
     }
     
-    setConversation(prev => [...prev, userMessage])
+    // Update the active conversation with the user message
+    setConversationTabs(prev => prev.map(tab => 
+      tab.id === activeTabId 
+        ? { ...tab, messages: [...tab.messages, userMessage] }
+        : tab
+    ))
+    
     const promptText = currentPrompt.trim()
     setCurrentPrompt('')
     
@@ -129,9 +141,14 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
       }
       
       // Store the complete interaction
-      aiPromptStorage.addPrompt(promptText, aiResponse)
+      aiPromptStorage.addPrompt(activeTabId, promptText, aiResponse)
       
-      setConversation(prev => [...prev, aiMessage])
+      // Update the active conversation with AI response
+      setConversationTabs(prev => prev.map(tab => 
+        tab.id === activeTabId 
+          ? { ...tab, messages: [...tab.messages, aiMessage] }
+          : tab
+      ))
     } catch (error) {
       console.error('Error generating AI response:', error)
       Alert.alert('Error', 'Failed to get AI response. Please try again.')
@@ -142,22 +159,96 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
     setCurrentPrompt(suggestion)
   }
 
+  const createNewTab = () => {
+    if (!newTabTitle.trim()) {
+      Alert.alert('Error', 'Please enter a conversation title')
+      return
+    }
+
+    const newTab = {
+      id: `conv_${Date.now()}`,
+      title: newTabTitle.trim(),
+      messages: [
+        {
+          id: `welcome_${Date.now()}`,
+          type: 'ai',
+          message: "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?",
+          timestamp: new Date().toISOString()
+        }
+      ],
+      createdAt: new Date().toISOString()
+    }
+
+    setConversationTabs(prev => [...prev, newTab])
+    setActiveTabId(newTab.id)
+    setNewTabTitle('')
+    setShowNewTabModal(false)
+  }
+
+  const deleteTab = (tabId) => {
+    if (conversationTabs.length === 1) {
+      Alert.alert('Error', 'You must have at least one conversation')
+      return
+    }
+
+    Alert.alert(
+      'Delete Conversation',
+      'Are you sure you want to delete this conversation?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setConversationTabs(prev => prev.filter(tab => tab.id !== tabId))
+            aiPromptStorage.deleteConversation(tabId)
+            
+            // Switch to another tab if deleting active tab
+            if (tabId === activeTabId) {
+              const remainingTabs = conversationTabs.filter(tab => tab.id !== tabId)
+              setActiveTabId(remainingTabs[0].id)
+            }
+          }
+        }
+      ]
+    )
+  }
+
   const clearConversation = () => {
-    setConversation([
-      {
-        id: 'welcome',
-        type: 'ai',
-        message: "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?",
-        timestamp: new Date().toISOString()
-      }
-    ])
-    aiPromptStorage.clearConversation()
+    Alert.alert(
+      'Clear Conversation',
+      'Are you sure you want to clear this conversation?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            setConversationTabs(prev => prev.map(tab => 
+              tab.id === activeTabId 
+                ? {
+                    ...tab,
+                    messages: [
+                      {
+                        id: `welcome_${Date.now()}`,
+                        type: 'ai',
+                        message: "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?",
+                        timestamp: new Date().toISOString()
+                      }
+                    ]
+                  }
+                : tab
+            ))
+            aiPromptStorage.deleteConversation(activeTabId)
+          }
+        }
+      ]
+    )
   }
 
   const formatMessage = (message) => {
-    // Simple markdown-like formatting
     return message
-      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markers for now
+      .replace(/\*\*(.*?)\*\*/g, '$1')
       .split('\n')
       .map((line, index) => (
         <Text key={index} style={line.startsWith('•') ? styles.bulletPoint : styles.messageLine}>
@@ -185,6 +276,49 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         </TouchableOpacity>
       </View>
 
+      {/* Conversation Tabs */}
+      <View style={styles.tabsContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabsScrollView}
+        >
+          {conversationTabs.map((tab) => (
+            <TouchableOpacity
+              key={tab.id}
+              style={[
+                styles.tab,
+                tab.id === activeTabId && styles.activeTab
+              ]}
+              onPress={() => setActiveTabId(tab.id)}
+              onLongPress={() => deleteTab(tab.id)}
+            >
+              <Text style={[
+                styles.tabText,
+                tab.id === activeTabId && styles.activeTabText
+              ]}>
+                {tab.title}
+              </Text>
+              {tab.messages.length > 1 && (
+                <View style={styles.messageBadge}>
+                  <Text style={styles.messageBadgeText}>
+                    {tab.messages.length - 1}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+          
+          {/* New Tab Button */}
+          <TouchableOpacity
+            style={styles.newTabButton}
+            onPress={() => setShowNewTabModal(true)}
+          >
+            <Text style={styles.newTabButtonText}>+ New</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
       {/* Conversation Area */}
       <ScrollView 
         ref={scrollViewRef}
@@ -192,7 +326,7 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         contentContainerStyle={styles.conversationContent}
         showsVerticalScrollIndicator={false}
       >
-        {conversation.map((message) => (
+        {activeConversation?.messages.map((message) => (
           <View 
             key={message.id} 
             style={[
@@ -227,8 +361,8 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         )}
       </ScrollView>
 
-      {/* Suggestions (show only if conversation is short) */}
-      {conversation.length <= 2 && (
+      {/* Suggestions */}
+      {activeConversation?.messages.length <= 2 && (
         <View style={styles.suggestionsContainer}>
           <Text style={styles.suggestionsTitle}>Try asking:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -272,225 +406,47 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
           {currentPrompt.length}/500 • Ask anything about meal planning and food waste
         </Text>
       </View>
+
+      {/* New Tab Modal */}
+      <Modal
+        visible={showNewTabModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowNewTabModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>New Conversation</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={newTabTitle}
+              onChangeText={setNewTabTitle}
+              placeholder="Enter conversation title (e.g., Recipe Ideas)"
+              maxLength={30}
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  setShowNewTabModal(false)
+                  setNewTabTitle('')
+                }}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalCreateButton}
+                onPress={createNewTab}
+              >
+                <Text style={styles.modalCreateButtonText}>Create</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   )
 }
-
-// Internal styles for the AI screen
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-
-  // Header Styles
-  aiHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
-  },
-
-  aiHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
-    flex: 1,
-    textAlign: 'center',
-  },
-
-  backButton: {
-    padding: 8,
-  },
-
-  backButtonText: {
-    fontSize: 16,
-    color: '#4ECDC4',
-    fontWeight: '500',
-  },
-
-  clearButton: {
-    padding: 8,
-  },
-
-  clearButtonText: {
-    fontSize: 16,
-    color: '#FF6B6B',
-    fontWeight: '500',
-  },
-
-  // Conversation Area
-  conversationArea: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-
-  conversationContent: {
-    padding: 16,
-    paddingBottom: 20,
-  },
-
-  messageContainer: {
-    marginBottom: 16,
-    maxWidth: '85%',
-  },
-
-  userMessage: {
-    alignSelf: 'flex-end',
-  },
-
-  aiMessage: {
-    alignSelf: 'flex-start',
-  },
-
-  messageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-
-  messageAuthor: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 2,
-  },
-
-  messageTimestamp: {
-    fontSize: 11,
-    color: '#999',
-  },
-
-  messageContent: {
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-
-  messageLine: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#2c3e50',
-    marginBottom: 4,
-  },
-
-  bulletPoint: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#2c3e50',
-    marginBottom: 4,
-    marginLeft: 8,
-  },
-
-  loadingText: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 8,
-    fontStyle: 'italic',
-  },
-
-  // Suggestions
-  suggestionsContainer: {
-    backgroundColor: '#fff',
-    paddingVertical: 16,
-    paddingLeft: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-  },
-
-  suggestionsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 12,
-    marginLeft: 4,
-  },
-
-  suggestionChip: {
-    backgroundColor: '#f0f8ff',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: '#4ECDC4',
-    maxWidth: 250,
-  },
-
-  suggestionText: {
-    fontSize: 14,
-    color: '#4ECDC4',
-    fontWeight: '500',
-  },
-
-  // Input Area
-  inputContainer: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    paddingBottom: Platform.OS === 'ios' ? 34 : 12,
-  },
-
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 20,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-  },
-
-  promptInput: {
-    flex: 1,
-    minHeight: 40,
-    maxHeight: 100,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#2c3e50',
-    backgroundColor: 'transparent',
-  },
-
-  sendButton: {
-    backgroundColor: '#4ECDC4',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 16,
-    marginLeft: 8,
-  },
-
-  sendButtonDisabled: {
-    backgroundColor: '#ccc',
-  },
-
-  sendButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-
-  inputHelper: {
-    fontSize: 12,
-    color: '#999',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-})
 
 export default SmartMealPlanScreen

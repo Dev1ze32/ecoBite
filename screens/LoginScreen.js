@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {View,Text,TextInput,TouchableOpacity,Platform,Alert,ScrollView,Keyboard,Modal,KeyboardAvoidingView,} from 'react-native';
 import styles from './styles/loginScreenStyle';
-import { registerUser, login } from '../data/auth'; // Import auth functions
+import { useAuth } from '../data/AuthContext'; // Import the auth context
 
-// User Type Dropdown Component
+// UserTypeDropdown Component
 const UserTypeDropdown = ({ selectedType, onSelect, isOpen, onToggle }) => {
   const userTypes = [
     { value: 'household', label: '🏠 Household', description: 'For families and individuals' },
@@ -65,7 +65,7 @@ const UserTypeDropdown = ({ selectedType, onSelect, isOpen, onToggle }) => {
   );
 };
 
-// Updated SignUpModal component with Supabase integration
+// SignUpModal Component
 const SignUpModal = ({ visible, onClose, onSignUp, isLoading }) => {
   const [formData, setFormData] = useState({
     firstName: '',
@@ -78,7 +78,6 @@ const SignUpModal = ({ visible, onClose, onSignUp, isLoading }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // Refs to prevent re-render issues
   const firstNameRef = useRef(null);
   const lastNameRef = useRef(null);
   const emailRef = useRef(null);
@@ -123,12 +122,11 @@ const SignUpModal = ({ visible, onClose, onSignUp, isLoading }) => {
   };
 
   const handleClose = () => {
-    Keyboard.dismiss(); // Dismiss keyboard before closing
+    Keyboard.dismiss();
     resetForm();
     onClose();
   };
 
-  // Reset form when modal becomes visible
   React.useEffect(() => {
     if (visible) {
       resetForm();
@@ -143,16 +141,13 @@ const SignUpModal = ({ visible, onClose, onSignUp, isLoading }) => {
       onRequestClose={handleClose}
       statusBarTranslucent={true}
     >
-      {/* Updated Modal Overlay - now 90% of screen */}
       <View style={styles.modalOverlay}>
-        {/* Backdrop that dismisses modal */}
         <TouchableOpacity 
           style={styles.modalBackdrop}
           activeOpacity={1}
           onPress={handleClose}
         />
         
-        {/* Modal Content Container - Updated for 90% height */}
         <View style={styles.modalContentWrapper}>
           <KeyboardAvoidingView 
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -160,7 +155,6 @@ const SignUpModal = ({ visible, onClose, onSignUp, isLoading }) => {
             keyboardVerticalOffset={0}
           >
             <View style={styles.modalContainer}>
-              {/* Modal Header */}
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Join EcoBite! 🌱</Text>
                 <Text style={styles.modalSubtitle}>Start your eco-friendly journey</Text>
@@ -172,7 +166,6 @@ const SignUpModal = ({ visible, onClose, onSignUp, isLoading }) => {
                 </TouchableOpacity>
               </View>
 
-              {/* Sign Up Form */}
               <ScrollView 
                 style={styles.modalForm}
                 showsVerticalScrollIndicator={false}
@@ -355,17 +348,20 @@ const SignUpModal = ({ visible, onClose, onSignUp, isLoading }) => {
   );
 };
 
-const LoginScreen = ({ onLogin }) => {
+const LoginScreen = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
+  // Get auth functions from context
+  const { login, register } = useAuth();
+  
   // Sign up modal states
   const [showSignUpModal, setShowSignUpModal] = useState(false);
   const [isSignUpLoading, setIsSignUpLoading] = useState(false);
 
-  // Updated login handler with Supabase integration
+  // Updated login handler using auth context
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
       Alert.alert('Error', 'Please enter both username and password');
@@ -376,19 +372,15 @@ const LoginScreen = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      // Use the login function from auth.js
+      // Use context login function - it handles everything
       const userData = await login(username.trim(), password);
       
-      // Login successful
       console.log('Login successful:', userData);
-      
-      // Pass user data to parent component
-      onLogin(userData);
+      // Navigation will be handled by App.js based on isAuthenticated
       
     } catch (error) {
       console.error('Login error:', error);
       
-      // Show appropriate error message
       let errorMessage = 'Login failed. Please try again.';
       if (error.message === 'User not found') {
         errorMessage = 'Username not found. Please check your username or sign up.';
@@ -404,7 +396,7 @@ const LoginScreen = ({ onLogin }) => {
     }
   };
 
-  // Updated sign up handler with Supabase integration
+  // Updated sign up handler using auth context
   const handleSignUp = useCallback(async (formData) => {
     const { firstName, lastName, email, username: signUpUsername, password: signUpPassword, userType } = formData;
     
@@ -414,14 +406,12 @@ const LoginScreen = ({ onLogin }) => {
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
-    // Password strength validation (optional - you can customize this)
     if (signUpPassword.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters long');
       return;
@@ -430,8 +420,8 @@ const LoginScreen = ({ onLogin }) => {
     setIsSignUpLoading(true);
 
     try {
-      // Use the registerUser function from auth.js
-      const userData = await registerUser(
+      // Use context register function
+      const userData = await register(
         firstName.trim(),
         lastName.trim(),
         email.trim().toLowerCase(),
@@ -440,12 +430,10 @@ const LoginScreen = ({ onLogin }) => {
         userType
       );
 
-      // Registration successful
       console.log('Registration successful:', userData);
       
       setIsSignUpLoading(false);
       
-      // Show success message with user type
       const accountTypeText = userType === 'household' ? 'Household' : 'Restaurant';
       Alert.alert(
         'Registration Successful! 🎉',
@@ -455,7 +443,6 @@ const LoginScreen = ({ onLogin }) => {
             text: 'OK',
             onPress: () => {
               setShowSignUpModal(false);
-              // Optionally pre-fill the login form with the new username
               setUsername(signUpUsername.trim().toLowerCase());
             }
           }
@@ -466,7 +453,6 @@ const LoginScreen = ({ onLogin }) => {
       console.error('Registration error:', error);
       setIsSignUpLoading(false);
       
-      // Show appropriate error message
       let errorMessage = 'Registration failed. Please try again.';
       if (error.message === 'Email already registered') {
         errorMessage = 'This email is already registered. Please use a different email or try logging in.';
@@ -478,7 +464,7 @@ const LoginScreen = ({ onLogin }) => {
       
       Alert.alert('Registration Failed', errorMessage);
     }
-  }, []);
+  }, [register]);
 
   const openSignUpModal = useCallback(() => {
     setShowSignUpModal(true);
@@ -589,7 +575,7 @@ const LoginScreen = ({ onLogin }) => {
               </View>
             </View>
 
-            {/* Demo Credentials - Remove this in production */}
+            {/* Demo Credentials */}
             <View style={styles.demoContainer}>
               <Text style={styles.demoTitle}>Demo Mode:</Text>
               <Text style={styles.demoText}>Create an account or use existing credentials</Text>
