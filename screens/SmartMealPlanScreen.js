@@ -1,77 +1,157 @@
 import { View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Modal } from 'react-native'
 import React, { useState, useRef, useEffect } from 'react'
 import styles from './styles/SmartMealPlanScreenStyles';
-
-// Internal prompt storage for future API usage
-let aiPromptStorage = {
-  conversations: {}, // Store multiple conversations by ID
-  
-  addPrompt: function(conversationId, prompt, response = null) {
-    if (!this.conversations[conversationId]) {
-      this.conversations[conversationId] = []
-    }
-    
-    const timestamp = new Date().toISOString()
-    const promptData = {
-      id: Date.now().toString(),
-      prompt,
-      response,
-      timestamp,
-      category: 'meal-planning'
-    }
-    
-    this.conversations[conversationId].push(promptData)
-    return promptData
-  },
-  
-  getConversation: function(conversationId) {
-    return this.conversations[conversationId] || []
-  },
-  
-  deleteConversation: function(conversationId) {
-    delete this.conversations[conversationId]
-  },
-  
-  getAllConversations: function() {
-    return this.conversations
-  }
-}
+import { useAuth } from '../data/AuthContext';
+import { supabase } from '../data/supabase';
+import { sendWebhook } from '../data/ai_webhook';
 
 const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
+  const { user, getUserId, getUsername, getUserType } = useAuth();
+  
   const [currentPrompt, setCurrentPrompt] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true)
   const scrollViewRef = useRef(null)
   
-  // Conversation tabs management
-  const [conversationTabs, setConversationTabs] = useState([
-    {
-      id: 'conv_1',
-      title: 'General Chat',
-      messages: [
-        {
-          id: 'welcome',
-          type: 'ai',
-          message: "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?",
-          timestamp: new Date().toISOString()
-        }
-      ],
-      createdAt: new Date().toISOString()
-    }
-  ])
-  const [activeTabId, setActiveTabId] = useState('conv_1')
+  const [conversationTabs, setConversationTabs] = useState([])
+  const [activeTabId, setActiveTabId] = useState(null)
   const [showNewTabModal, setShowNewTabModal] = useState(false)
   const [newTabTitle, setNewTabTitle] = useState('')
 
-  // Get current active conversation
   const activeConversation = conversationTabs.find(tab => tab.id === activeTabId)
 
-  // Sample suggestions
   const suggestions = [
     "Create a meal plan using my expiring ingredients",
     "What recipes can I make with leftover vegetables?",
     "How to properly store fresh produce to last longer",
     "Suggest portions for a family of 4 to avoid waste"
   ]
+
+  useEffect(() => {
+    const userId = getUserId();
+    console.log('SmartMealPlan - Current User ID:', userId);
+    console.log('SmartMealPlan - Username:', getUsername());
+    console.log('SmartMealPlan - User Type:', getUserType());
+    
+    if (userId) {
+      loadUserConversations();
+    }
+  }, []);
+
+  const loadUserConversations = async () => {
+    try {
+      setIsLoadingConversations(true);
+      const userId = getUserId();
+
+      const { data: conversations, error: convError } = await supabase
+        .from('Conversations')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true });
+
+      if (convError) throw convError;
+
+      if (!conversations || conversations.length === 0) {
+        await createDefaultConversation();
+        return;
+      }
+
+      const conversationIds = conversations.map(c => c.conversation_id);
+      const { data: messages, error: msgError } = await supabase
+        .from('messages')
+        .select('*')
+        .in('conversation_id', conversationIds)
+        .order('created_at', { ascending: true });
+
+      if (msgError) throw msgError;
+
+      const messagesByConversation = {};
+      messages?.forEach(msg => {
+        if (!messagesByConversation[msg.conversation_id]) {
+          messagesByConversation[msg.conversation_id] = [];
+        }
+        messagesByConversation[msg.conversation_id].push({
+          id: msg.id.toString(),
+          type: msg.sender === 'user' ? 'user' : 'ai',
+          message: msg.content,
+          timestamp: msg.created_at
+        });
+      });
+
+      const tabs = conversations.map(conv => ({
+        id: conv.conversation_id,
+        title: conv.title,
+        messages: messagesByConversation[conv.conversation_id] || [],
+        createdAt: conv.created_at
+      }));
+
+      setConversationTabs(tabs);
+      
+      if (tabs.length > 0) {
+        setActiveTabId(tabs[0].id);
+      }
+
+      console.log(`Loaded ${tabs.length} conversations with messages`);
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+      Alert.alert('Error', 'Failed to load conversations. Creating a new one.');
+      await createDefaultConversation();
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
+  const createDefaultConversation = async () => {
+    try {
+      const userId = getUserId();
+      const welcomeMessage = "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?";
+
+      const { data: newConversation, error: convError } = await supabase
+        .from('Conversations')
+        .insert({
+          user_id: userId,
+          title: 'General Chat',
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (convError) throw convError;
+
+      const conversationId = newConversation.conversation_id;
+
+      const { error: msgError } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          sender: 'ai',
+          content: welcomeMessage,
+          created_at: new Date().toISOString()
+        });
+
+      if (msgError) throw msgError;
+
+      const newTab = {
+        id: conversationId,
+        title: 'General Chat',
+        messages: [{
+          id: `welcome_${Date.now()}`,
+          type: 'ai',
+          message: welcomeMessage,
+          timestamp: new Date().toISOString()
+        }],
+        createdAt: new Date().toISOString()
+      };
+
+      setConversationTabs([newTab]);
+      setActiveTabId(conversationId);
+      
+      console.log('Default conversation created with ID:', conversationId);
+    } catch (error) {
+      console.error('Error creating default conversation:', error);
+      Alert.alert('Error', `Failed to create conversation: ${error.message}`);
+    }
+  };
 
   // Scroll to bottom when new messages are added
   useEffect(() => {
@@ -80,34 +160,49 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
     }
   }, [activeConversation?.messages])
 
-  // Test AI responses
-  const generateTestAIResponse = async (prompt) => {
+  // Save message to database
+  const saveMessageToDatabase = async (conversationId, sender, content) => {
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          sender: sender,
+          content: content,
+          created_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+      console.log('Message saved to database');
+    } catch (error) {
+      console.error('Error saving message:', error);
+    }
+  };
+
+  // Get AI response from webhook
+  const generateAIResponse = async (prompt) => {
     setIsLoading(true)
     
-    // Store the prompt
-    aiPromptStorage.addPrompt(activeTabId, prompt)
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    // Mock AI responses based on prompt content
-    let response = ''
-    const lowerPrompt = prompt.toLowerCase()
-    
-    if (lowerPrompt.includes('recipe') || lowerPrompt.includes('cook')) {
-      response = "Here are some recipe suggestions based on reducing food waste:\n\n• **Veggie Scrap Broth**: Use vegetable peels and scraps to make a nutritious broth\n• **Leftover Stir-fry**: Combine any vegetables nearing expiration with rice or noodles\n• **Smoothie Bowl**: Blend overripe fruits with yogurt for a healthy breakfast\n\nWould you like detailed instructions for any of these recipes?"
-    } else if (lowerPrompt.includes('meal plan')) {
-      response = "I'd be happy to create a meal plan for you! To give you the best suggestions:\n\n• What ingredients do you currently have?\n• How many people are you cooking for?\n• Any dietary restrictions?\n• Which items are expiring soon?\n\nThis will help me create a plan that minimizes waste and maximizes nutrition."
-    } else if (lowerPrompt.includes('store') || lowerPrompt.includes('preserve')) {
-      response = "Great question about food storage! Here are key tips to extend freshness:\n\n• **Herbs**: Store like flowers in water, cover with plastic\n• **Leafy Greens**: Wrap in damp paper towel, keep in fridge\n• **Bananas**: Keep separate from other fruits\n• **Bread**: Store in cool, dry place or freeze\n\nProper storage can extend food life by 3-7 days on average!"
-    } else if (lowerPrompt.includes('portion') || lowerPrompt.includes('family')) {
-      response = "Smart question about portions! Here's a guide to reduce waste:\n\n• **Rice/Pasta**: 1/4 cup dry per person\n• **Vegetables**: 1/2 cup cooked per person\n• **Protein**: 3-4 oz per person\n• **Fruits**: 1/2 cup fresh per person\n\nTip: Start with smaller portions and offer seconds rather than over-serving initially!"
-    } else {
-      response = `I understand you're asking about "${prompt}". As your EcoBite assistant, I'm here to help with meal planning, recipes, food storage, and waste reduction. Could you provide more details about what specific help you need with your food management?`
+    try {
+      const sessionId = activeTabId;
+      
+      console.log('Sending to AI webhook:', { sessionId, prompt });
+      
+      const aiResponse = await sendWebhook(sessionId.toString(), prompt);
+      
+      console.log('AI Response received:', aiResponse);
+      
+      if (!aiResponse) {
+        throw new Error('No response from AI');
+      }
+      
+      setIsLoading(false);
+      return aiResponse;
+    } catch (error) {
+      console.error('Error calling AI webhook:', error);
+      setIsLoading(false);
+      return `I apologize, but I'm having trouble processing your request right now. Please try again in a moment.`;
     }
-    
-    setIsLoading(false)
-    return response
   }
 
   const handleSendPrompt = async () => {
@@ -120,7 +215,6 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
       timestamp: new Date().toISOString()
     }
     
-    // Update the active conversation with the user message
     setConversationTabs(prev => prev.map(tab => 
       tab.id === activeTabId 
         ? { ...tab, messages: [...tab.messages, userMessage] }
@@ -129,9 +223,11 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
     
     const promptText = currentPrompt.trim()
     setCurrentPrompt('')
+
+    await saveMessageToDatabase(activeTabId, 'user', promptText);
     
     try {
-      const aiResponse = await generateTestAIResponse(promptText)
+      const aiResponse = await generateAIResponse(promptText)
       
       const aiMessage = {
         id: (Date.now() + 1).toString(),
@@ -140,15 +236,19 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         timestamp: new Date().toISOString()
       }
       
-      // Store the complete interaction
-      aiPromptStorage.addPrompt(activeTabId, promptText, aiResponse)
-      
-      // Update the active conversation with AI response
       setConversationTabs(prev => prev.map(tab => 
         tab.id === activeTabId 
           ? { ...tab, messages: [...tab.messages, aiMessage] }
           : tab
       ))
+
+      await saveMessageToDatabase(activeTabId, 'ai', aiResponse);
+
+      await supabase
+        .from('Conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('conversation_id', activeTabId);
+
     } catch (error) {
       console.error('Error generating AI response:', error)
       Alert.alert('Error', 'Failed to get AI response. Please try again.')
@@ -159,30 +259,63 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
     setCurrentPrompt(suggestion)
   }
 
-  const createNewTab = () => {
+  const createNewTab = async () => {
     if (!newTabTitle.trim()) {
       Alert.alert('Error', 'Please enter a conversation title')
       return
     }
 
-    const newTab = {
-      id: `conv_${Date.now()}`,
-      title: newTabTitle.trim(),
-      messages: [
-        {
+    try {
+      const userId = getUserId();
+      const welcomeMessage = "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?";
+
+      const { data: newConversation, error: convError } = await supabase
+        .from('Conversations')
+        .insert({
+          user_id: userId,
+          title: newTabTitle.trim(),
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (convError) throw convError;
+
+      const conversationId = newConversation.conversation_id;
+
+      const { error: msgError } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          sender: 'ai',
+          content: welcomeMessage,
+          created_at: new Date().toISOString()
+        });
+
+      if (msgError) throw msgError;
+
+      const newTab = {
+        id: conversationId,
+        title: newTabTitle.trim(),
+        messages: [{
           id: `welcome_${Date.now()}`,
           type: 'ai',
-          message: "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?",
+          message: welcomeMessage,
           timestamp: new Date().toISOString()
-        }
-      ],
-      createdAt: new Date().toISOString()
-    }
+        }],
+        createdAt: new Date().toISOString()
+      };
 
-    setConversationTabs(prev => [...prev, newTab])
-    setActiveTabId(newTab.id)
-    setNewTabTitle('')
-    setShowNewTabModal(false)
+      setConversationTabs(prev => [...prev, newTab]);
+      setActiveTabId(conversationId);
+      setNewTabTitle('');
+      setShowNewTabModal(false);
+
+      console.log('New conversation created with ID:', conversationId);
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      Alert.alert('Error', 'Failed to create conversation. Please try again.');
+    }
   }
 
   const deleteTab = (tabId) => {
@@ -199,14 +332,29 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            setConversationTabs(prev => prev.filter(tab => tab.id !== tabId))
-            aiPromptStorage.deleteConversation(tabId)
-            
-            // Switch to another tab if deleting active tab
-            if (tabId === activeTabId) {
-              const remainingTabs = conversationTabs.filter(tab => tab.id !== tabId)
-              setActiveTabId(remainingTabs[0].id)
+          onPress: async () => {
+            try {
+              await supabase
+                .from('messages')
+                .delete()
+                .eq('conversation_id', tabId);
+
+              await supabase
+                .from('Conversations')
+                .delete()
+                .eq('conversation_id', tabId);
+
+              setConversationTabs(prev => prev.filter(tab => tab.id !== tabId));
+              
+              if (tabId === activeTabId) {
+                const remainingTabs = conversationTabs.filter(tab => tab.id !== tabId);
+                setActiveTabId(remainingTabs[0].id);
+              }
+
+              console.log('Conversation deleted:', tabId);
+            } catch (error) {
+              console.error('Error deleting conversation:', error);
+              Alert.alert('Error', 'Failed to delete conversation');
             }
           }
         }
@@ -223,23 +371,43 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         {
           text: 'Clear',
           style: 'destructive',
-          onPress: () => {
-            setConversationTabs(prev => prev.map(tab => 
-              tab.id === activeTabId 
-                ? {
-                    ...tab,
-                    messages: [
-                      {
+          onPress: async () => {
+            try {
+              const welcomeMessage = "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?";
+
+              await supabase
+                .from('messages')
+                .delete()
+                .eq('conversation_id', activeTabId);
+
+              await supabase
+                .from('messages')
+                .insert({
+                  conversation_id: activeTabId,
+                  sender: 'ai',
+                  content: welcomeMessage,
+                  created_at: new Date().toISOString()
+                });
+
+              setConversationTabs(prev => prev.map(tab => 
+                tab.id === activeTabId 
+                  ? {
+                      ...tab,
+                      messages: [{
                         id: `welcome_${Date.now()}`,
                         type: 'ai',
-                        message: "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?",
+                        message: welcomeMessage,
                         timestamp: new Date().toISOString()
-                      }
-                    ]
-                  }
-                : tab
-            ))
-            aiPromptStorage.deleteConversation(activeTabId)
+                      }]
+                    }
+                  : tab
+              ));
+
+              console.log('Conversation cleared:', activeTabId);
+            } catch (error) {
+              console.error('Error clearing conversation:', error);
+              Alert.alert('Error', 'Failed to clear conversation');
+            }
           }
         }
       ]
@@ -257,12 +425,20 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
       ))
   }
 
+  if (isLoadingConversations) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#4ECDC4" />
+        <Text style={{ marginTop: 10, color: '#666' }}>Loading conversations...</Text>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      {/* Header */}
       <View style={styles.aiHeader}>
         <TouchableOpacity 
           onPress={() => navigation.goBack()} 
@@ -270,13 +446,17 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.aiHeaderTitle}>EcoBite AI Assistant</Text>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={styles.aiHeaderTitle}>EcoBite AI Assistant</Text>
+          <Text style={{ fontSize: 10, color: '#999' }}>
+            {getUserType() === 'restaurant' ? '🍽️ Restaurant Mode' : '🏠 Household Mode'}
+          </Text>
+        </View>
         <TouchableOpacity onPress={clearConversation} style={styles.clearButton}>
           <Text style={styles.clearButtonText}>Clear</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Conversation Tabs */}
       <View style={styles.tabsContainer}>
         <ScrollView 
           horizontal 
@@ -309,7 +489,6 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
             </TouchableOpacity>
           ))}
           
-          {/* New Tab Button */}
           <TouchableOpacity
             style={styles.newTabButton}
             onPress={() => setShowNewTabModal(true)}
@@ -319,7 +498,6 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         </ScrollView>
       </View>
 
-      {/* Conversation Area */}
       <ScrollView 
         ref={scrollViewRef}
         style={styles.conversationArea}
@@ -361,8 +539,7 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         )}
       </ScrollView>
 
-      {/* Suggestions */}
-      {activeConversation?.messages.length <= 2 && (
+      {activeConversation?.messages.length <= 1 && (
         <View style={styles.suggestionsContainer}>
           <Text style={styles.suggestionsTitle}>Try asking:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -379,7 +556,6 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         </View>
       )}
 
-      {/* Input Area */}
       <View style={styles.inputContainer}>
         <View style={styles.inputWrapper}>
           <TextInput
@@ -407,7 +583,6 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         </Text>
       </View>
 
-      {/* New Tab Modal */}
       <Modal
         visible={showNewTabModal}
         transparent={true}

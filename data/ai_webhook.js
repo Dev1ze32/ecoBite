@@ -1,16 +1,30 @@
-// testWebhookChat.js
-// testWebhookChat.js
-import { supabase } from './supabaseNode.js';
+// ai_webhook.js - React Native compatible version
+// Place this in: data/ai_webhook.js
+import 'react-native-url-polyfill/auto'
+import Constants from 'expo-constants'
 
-const webhookUrl = "https://dev1z.app.n8n.cloud/webhook/378f895f-6b92-4b86-835e-4f874cb47a40";
+const WEBHOOK_URL = Constants.expoConfig?.extra?.webhookUrl;
+const WEBHOOK_KEY = Constants.expoConfig?.extra?.webhookKey;
+if (!WEBHOOK_URL || !WEBHOOK_KEY) {
+  console.error('Missing Webhook environment variables!');
+  throw new Error('Missing Webhook environment variables');
+}
 
-async function sendWebhook(sessionId, message) {
+/**
+ * Send a message to the AI webhook and get a response
+ * @param {string} sessionId - Unique session/conversation ID
+ * @param {string} message - User's message to the AI
+ * @returns {Promise<string>} - AI's response 
+ */
+export async function sendWebhook(sessionId, message) {
   try {
-    const response = await fetch(webhookUrl, {
+    console.log('Calling AI webhook with:', { sessionId, message });
+    
+    const response = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "key": "__n8n_BLANK_VALUE_e5362baf-c777-4d57-a609-6eaf1f9e87f6"
+        "key": WEBHOOK_KEY
       },
       body: JSON.stringify({
         sessionId: sessionId,
@@ -18,23 +32,39 @@ async function sendWebhook(sessionId, message) {
       })
     });
 
+    if (!response.ok) {
+      throw new Error(`Webhook error: ${response.status} ${response.statusText}`);
+    }
+
     const data = await response.json();
-    console.log('Full webhook response:', data);
-    return data.ai_reply; // ✅ Changed to match actual response
+    console.log('Webhook response:', data);
+    
+    // Return the AI reply from the webhook response
+    return data.ai_reply || data.response || data.message || "I apologize, I couldn't generate a response.";
   } catch (error) {
-    console.error("Error posting to webhook:", error);
-    throw error;
+    console.error("Error calling webhook:", error);
+    throw new Error(`Failed to get AI response: ${error.message}`);
   }
 }
 
-async function saveMessageToSupabase(conversationId, sender, content) {
+/**
+ * Save message to Supabase (optional - you're already doing this in SmartMealPlanScreen)
+ * @param {number} conversationId - Conversation ID
+ * @param {string} sender - 'user' or 'ai'
+ * @param {string} content - Message content
+ */
+export async function saveMessageToSupabase(conversationId, sender, content) {
+  // Import supabase here to avoid circular dependencies
+  const { supabase } = require('./supabase');
+  
   try {
     const { data, error } = await supabase
       .from('messages')
       .insert({
         conversation_id: conversationId,
         sender: sender,
-        content: content
+        content: content,
+        created_at: new Date().toISOString()
       })
       .select();
 

@@ -11,6 +11,10 @@ export default {
       // Add environment variables to existing extra config
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+      supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  
+      webhookUrl: process.env.EXPO_PUBLIC_WEBHOOK_URL,
+      webhookKey: process.env.EXPO_PUBLIC_WEBHOOK_KEY,
     },
   },
 };
