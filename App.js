@@ -7,7 +7,7 @@ import CartScreen from './screens/CartScreen.js'
 import LoginScreen from './screens/LoginScreen.js'
 import SmartMealPlanScreen from './screens/SmartMealPlanScreen.js'
 import MoneySavedScreen from './screens/MoneySavedScreen.js'
-import MyImpactScreen from './screens/MyImpactScreen.js'
+import CookingScreen from './screens/CookingScreen.js' 
 import styles from './styles.js'
 
 // Import AuthProvider and useAuth
@@ -37,9 +37,9 @@ const services = [
   },
   { 
     id: '4', 
-    title: 'My Impact', 
-    subtitle: 'Environmental contribution',
-    icon: '🌱',
+    title: 'Cook', 
+    subtitle: 'Delicious recipes at your fingertips',
+    icon: '🍳',
     gradient: ['#43e97b', '#38f9d7']
   },
 ]
@@ -88,8 +88,8 @@ function MainApp() {
       setCurrentScreen('smartmealplan')
     } else if (serviceTitle === 'Money Saved') {
       setCurrentScreen('moneysaved')
-    } else if (serviceTitle === 'My Impact') {
-      setCurrentScreen('myimpact')
+    } else if (serviceTitle === 'Cook') {
+      setCurrentScreen('cook')
     }
   }
 
@@ -163,8 +163,8 @@ function MainApp() {
       navigation={{ goBack: handleBackToHome }} 
     />
   }
-  if (currentScreen === 'myimpact') {
-    return <MyImpactScreen 
+  if (currentScreen === 'cook') {
+    return <CookingScreen 
       navigation={{ goBack: handleBackToHome }} 
     />
   }

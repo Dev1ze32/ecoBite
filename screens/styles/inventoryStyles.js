@@ -1,106 +1,160 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Dimensions } from 'react-native';
+
+const { width } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
-  // Main container
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F5F7FA',
   },
 
-  // Header styles - FIXED PADDING ISSUE
-  header: {
+  // Modern Header
+  modernHeader: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: 50,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#FF6B6B',
-    paddingTop: 50, // Reduced from 50 to 20 to fix excessive spacing
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    marginBottom: 20,
   },
 
-  headerTitleContainer: {
-    flex: 1,
-  },
-
-  headerTitle: {
-    fontSize: 24,
+  modernHeaderTitle: {
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
+    color: '#1A202C',
   },
 
-  headerSubtitle: {
+  modernHeaderSubtitle: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: '#718096',
+    marginTop: 4,
   },
 
-  homeButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  modernHomeButton: {
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    backgroundColor: '#F7FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  modernHomeButtonText: {
+    fontSize: 20,
+  },
+
+  // Stats Row
+  statsRow: {
+    flexDirection: 'row',
     paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    gap: 10,
   },
 
-  homeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+  statCard: {
+    flex: 1,
+    backgroundColor: '#F7FAFC',
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
 
-  // Alerts section
-  alertsContainer: {
-    backgroundColor: '#FFF3CD',
-    margin: 16,
-    padding: 16,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FFC107',
+  statCardActive: {
+    borderColor: '#4ECDC4',
+    backgroundColor: '#E6FFFA',
   },
 
-  alertsTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#856404',
-    marginBottom: 8,
+  warningCard: {
+    backgroundColor: '#FFFAF0',
   },
 
-  expiredAlert: {
-    fontSize: 14,
-    color: '#721C24',
-    backgroundColor: '#F8D7DA',
-    padding: 8,
-    borderRadius: 4,
+  dangerCard: {
+    backgroundColor: '#FFF5F5',
+  },
+
+  statIcon: {
+    fontSize: 24,
     marginBottom: 4,
   },
 
-  expiringAlert: {
-    fontSize: 14,
-    color: '#856404',
-    backgroundColor: '#FFF3CD',
-    padding: 8,
-    borderRadius: 4,
+  statNumber: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1A202C',
   },
 
-  // List container
+  statLabel: {
+    fontSize: 11,
+    color: '#718096',
+    marginTop: 2,
+  },
+
+  // List Container
   listContainer: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+
+  listHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 12,
   },
 
   listTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 16,
+    color: '#1A202C',
+  },
+
+  clearFilterText: {
+    fontSize: 14,
+    color: '#4ECDC4',
+    fontWeight: '600',
+  },
+
+  swipeHint: {
+    backgroundColor: '#EDF2F7',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#4ECDC4',
+  },
+
+  swipeHintText: {
+    fontSize: 13,
+    color: '#4A5568',
+    textAlign: 'center',
   },
 
   listContent: {
-    paddingBottom: 80,
+    paddingBottom: 100,
+    paddingHorizontal: 20,
   },
 
-  // Empty state
+  // Empty State
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -108,115 +162,174 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
 
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+
   emptyText: {
     fontSize: 18,
-    color: '#666666',
-    textAlign: 'center',
+    fontWeight: '600',
+    color: '#4A5568',
     marginBottom: 8,
   },
 
   emptySubText: {
     fontSize: 14,
-    color: '#999999',
-    textAlign: 'center',
+    color: '#A0AEC0',
   },
 
-  // Item styles
-  itemContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+  // Swipeable Item
+  swipeContainer: {
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-    borderLeftWidth: 4,
+    position: 'relative',
   },
 
-  freshItem: {
-    borderLeftColor: '#28A745',
-  },
-
-  expiringItem: {
-    borderLeftColor: '#FFC107',
-    backgroundColor: '#FFFEF7',
-  },
-
-  expiredItem: {
-    borderLeftColor: '#DC3545',
-    backgroundColor: '#FDF2F2',
-  },
-
-  itemHeader: {
+  actionsBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
   },
 
-  itemName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333333',
-    flex: 1,
-  },
-
-  itemQuantity: {
-    fontSize: 14,
-    color: '#666666',
-    fontWeight: '500',
-  },
-
-  itemFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  leftAction: {
+    backgroundColor: '#48BB78',
+    width: 120,
+    borderRadius: 16,
+    justifyContent: 'center',
     alignItems: 'center',
   },
 
-  itemExpiry: {
-    fontSize: 14,
-    color: '#666666',
+  rightAction: {
+    backgroundColor: '#F56565',
+    width: 120,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
-  statusText: {
+  actionIcon: {
+    fontSize: 28,
+    color: '#FFFFFF',
+  },
+
+  actionText: {
     fontSize: 12,
-    fontWeight: 'bold',
-    color: '#FF6B6B',
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginTop: 4,
   },
 
-  // Floating button
-  floatingAddButton: {
+  // Item Card
+  itemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+
+  statusBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+
+  statusBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+
+  itemInfo: {
+    marginBottom: 12,
+    paddingRight: 100,
+  },
+
+  itemNameModern: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1A202C',
+    marginBottom: 6,
+  },
+
+  itemMeta: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+
+  metaText: {
+    fontSize: 13,
+    color: '#718096',
+  },
+
+  // Quick Actions
+  quickActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+
+  actionButton: {
+    flex: 1,
+    backgroundColor: '#EDF2F7',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+
+  wasteButton: {
+    backgroundColor: '#FED7D7',
+  },
+
+  actionButtonIcon: {
+    fontSize: 16,
+  },
+
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4A5568',
+  },
+
+  // Floating Button
+  modernFloatingButton: {
     position: 'absolute',
     right: 20,
     bottom: 20,
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#FF6B6B',
+    backgroundColor: '#4ECDC4',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
+    shadowColor: '#4ECDC4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
     elevation: 8,
   },
 
   floatingAddButtonText: {
-    fontSize: 24,
+    fontSize: 28,
     color: '#FFFFFF',
     fontWeight: 'bold',
   },
 
-  // Modal styles
+  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -224,91 +337,148 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  modalContainer: {
+  modernModalContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 24,
+    padding: 24,
     margin: 20,
     width: '90%',
     maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
   },
 
-  modalTitle: {
-    fontSize: 20,
+  modernModalTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#333333',
+    color: '#1A202C',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
 
-  // Input styles
-  input: {
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 8,
-    padding: 15,
+  // Input Styles
+  modernInput: {
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 16,
     fontSize: 16,
-    backgroundColor: '#F8F9FA',
-    marginBottom: 15,
+    backgroundColor: '#F7FAFC',
+    marginBottom: 16,
+    color: '#1A202C',
   },
 
-  // Quantity container with integrated unit selector
   quantityContainer: {
     flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 8,
-    backgroundColor: '#F8F9FA',
-    marginBottom: 15,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    backgroundColor: '#F7FAFC',
+    marginBottom: 16,
     overflow: 'hidden',
   },
 
   quantityInput: {
     flex: 1,
-    padding: 15,
+    padding: 16,
     fontSize: 16,
-    color: '#333333',
+    color: '#1A202C',
   },
 
   unitSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 15,
-    backgroundColor: '#E9ECEF',
-    borderLeftWidth: 1,
-    borderLeftColor: '#DDD',
+    paddingHorizontal: 16,
+    backgroundColor: '#EDF2F7',
+    borderLeftWidth: 2,
+    borderLeftColor: '#E2E8F0',
     minWidth: 80,
   },
 
   unitText: {
     fontSize: 16,
-    color: '#333333',
-    fontWeight: '500',
-    marginRight: 5,
+    color: '#1A202C',
+    fontWeight: '600',
+    marginRight: 6,
   },
 
   dropdownArrow: {
-    fontSize: 12,
-    color: '#666666',
+    fontSize: 10,
+    color: '#718096',
   },
 
-  dateInput: {
-    justifyContent: 'center',
-    paddingVertical: 15,
+  modernDateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: '#F7FAFC',
+    marginBottom: 16,
+  },
+
+  dateInputIcon: {
+    fontSize: 20,
+    marginRight: 12,
   },
 
   dateInputText: {
     fontSize: 16,
-    color: '#333333',
+    color: '#1A202C',
+    flex: 1,
   },
 
   dateInputPlaceholder: {
     fontSize: 16,
-    color: '#999999',
+    color: '#A0AEC0',
+    flex: 1,
   },
 
-  // Unit picker modal styles
+  // Modal Buttons
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+
+  modernModalButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  cancelButton: {
+    backgroundColor: '#EDF2F7',
+  },
+
+  cancelButtonText: {
+    color: '#4A5568',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  saveButton: {
+    backgroundColor: '#4ECDC4',
+    shadowColor: '#4ECDC4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+
+  // Unit Picker Modal
   unitModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -318,92 +488,58 @@ const styles = StyleSheet.create({
 
   unitModalContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 15,
+    borderRadius: 20,
     margin: 20,
     width: '80%',
     maxHeight: '60%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
   },
 
   unitModalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#333333',
+    color: '#1A202C',
     textAlign: 'center',
     paddingVertical: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#E9ECEF',
+    borderBottomColor: '#E2E8F0',
   },
 
   unitOption: {
-    padding: 15,
+    padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F3F4',
+    borderBottomColor: '#F7FAFC',
   },
 
   selectedUnitOption: {
-    backgroundColor: '#FF6B6B20',
+    backgroundColor: '#E6FFFA',
   },
 
   unitOptionText: {
     fontSize: 16,
-    color: '#333333',
+    color: '#4A5568',
   },
 
   selectedUnitOptionText: {
-    color: '#FF6B6B',
+    color: '#4ECDC4',
     fontWeight: '600',
   },
 
   unitModalCloseButton: {
-    padding: 15,
+    padding: 16,
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#E9ECEF',
+    borderTopColor: '#E2E8F0',
   },
 
   unitModalCloseText: {
     fontSize: 16,
-    color: '#666666',
-    fontWeight: '500',
-  },
-
-  // Modal buttons
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-  },
-
-  modalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-
-  cancelButton: {
-    backgroundColor: '#F8F9FA',
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: '#DDD',
-  },
-
-  cancelButtonText: {
-    color: '#666666',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-
-  saveButton: {
-    backgroundColor: '#FF6B6B',
-    marginLeft: 10,
-  },
-
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
+    color: '#718096',
+    fontWeight: '600',
   },
 });
 
