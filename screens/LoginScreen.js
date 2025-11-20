@@ -361,7 +361,7 @@ const LoginScreen = () => {
   const [showSignUpModal, setShowSignUpModal] = useState(false);
   const [isSignUpLoading, setIsSignUpLoading] = useState(false);
 
-  // Updated login handler using auth context
+    // Updated login handler using auth context
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
       Alert.alert('Error', 'Please enter both username and password');
@@ -372,21 +372,17 @@ const LoginScreen = () => {
     setIsLoading(true);
 
     try {
-      // Use context login function - it handles everything
+      // This now works correctly with the new auth.js format
       const userData = await login(username.trim(), password);
       
       console.log('Login successful:', userData);
-      // Navigation will be handled by App.js based on isAuthenticated
+      // Navigation handled by App.js based on isAuthenticated
       
     } catch (error) {
       console.error('Login error:', error);
       
       let errorMessage = 'Login failed. Please try again.';
-      if (error.message === 'User not found') {
-        errorMessage = 'Username not found. Please check your username or sign up.';
-      } else if (error.message === 'Invalid password') {
-        errorMessage = 'Incorrect password. Please try again.';
-      } else if (error.message) {
+      if (error.message) {
         errorMessage = error.message;
       }
       
