@@ -3,24 +3,22 @@ import { View, Text, TextInput, TouchableOpacity, FlatList, Modal, Alert, Animat
 import DateTimePicker from '@react-native-community/datetimepicker';
 import styles from './styles/inventoryStyles.js';
 import { useAuth } from '../data/AuthContext';
-import { supabase } from '../data/supabase';
+import { supabase, withUserContext } from '../data/supabase';
 
 // Swipeable Item Component
-const SwipeableItem = ({ item, onCook, onMarkUsed, onWaste, onDelete }) => {
+const SwipeableItem = ({ item, onCook, onMarkUsed, onWaste }) => {
   const translateX = new Animated.Value(0);
   const [isSwiping, setIsSwiping] = useState(false);
   
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_, gesture) => {
-      // Only start pan if horizontal movement is significant
       return Math.abs(gesture.dx) > 10;
     },
     onPanResponderGrant: () => {
       setIsSwiping(true);
     },
     onPanResponderMove: (_, gesture) => {
-      // Limit swipe distance
       const maxSwipe = 150;
       const minSwipe = -150;
       const clampedValue = Math.max(minSwipe, Math.min(maxSwipe, gesture.dx));
@@ -30,21 +28,18 @@ const SwipeableItem = ({ item, onCook, onMarkUsed, onWaste, onDelete }) => {
       setIsSwiping(false);
       
       if (gesture.dx > 80) {
-        // Swipe right - Mark Used
         Animated.spring(translateX, {
           toValue: 0,
           useNativeDriver: true,
         }).start();
         onMarkUsed(item);
       } else if (gesture.dx < -80) {
-        // Swipe left - Waste
         Animated.spring(translateX, {
           toValue: 0,
           useNativeDriver: true,
         }).start();
         onWaste(item);
       } else {
-        // Return to original position
         Animated.spring(translateX, {
           toValue: 0,
           useNativeDriver: true,
@@ -53,7 +48,7 @@ const SwipeableItem = ({ item, onCook, onMarkUsed, onWaste, onDelete }) => {
     },
   });
 
-  const status = getItemStatus(item.expiryDate);
+  const status = getItemStatus(item.expiry_date);
   const statusConfig = {
     expired: { color: '#DC3545', label: 'EXPIRED', icon: '🔴' },
     expiring: { color: '#FFC107', label: 'EXPIRING SOON', icon: '🟡' },
@@ -62,7 +57,6 @@ const SwipeableItem = ({ item, onCook, onMarkUsed, onWaste, onDelete }) => {
 
   return (
     <View style={styles.swipeContainer}>
-      {/* Background Actions */}
       <View style={styles.actionsBackground}>
         <View style={styles.leftAction}>
           <Text style={styles.actionIcon}>✓</Text>
@@ -74,7 +68,6 @@ const SwipeableItem = ({ item, onCook, onMarkUsed, onWaste, onDelete }) => {
         </View>
       </View>
 
-      {/* Swipeable Card */}
       <Animated.View
         style={[
           styles.itemCard,
@@ -85,23 +78,21 @@ const SwipeableItem = ({ item, onCook, onMarkUsed, onWaste, onDelete }) => {
         ]}
         {...panResponder.panHandlers}
       >
-        {/* Status Badge */}
         <View style={[styles.statusBadge, { backgroundColor: statusConfig[status].color }]}>
           <Text style={styles.statusBadgeText}>
             {statusConfig[status].icon} {statusConfig[status].label}
           </Text>
         </View>
 
-        {/* Item Info */}
         <View style={styles.itemInfo}>
-          <Text style={styles.itemNameModern}>{item.name}</Text>
+          <Text style={styles.itemNameModern}>{item.item_name}</Text>
           <View style={styles.itemMeta}>
-            <Text style={styles.metaText}>📦 {item.quantity}</Text>
-            <Text style={styles.metaText}>📅 {item.expiryDate}</Text>
+            <Text style={styles.metaText}>📦 {item.quantity} {item.unit || ''}</Text>
+            <Text style={styles.metaText}>📅 {item.expiry_date}</Text>
+            {item.cost && <Text style={styles.metaText}>💰 ₱{item.cost}</Text>}
           </View>
         </View>
 
-        {/* Quick Actions - Only clickable when not swiping */}
         <View style={styles.quickActions} pointerEvents={isSwiping ? 'none' : 'auto'}>
           <TouchableOpacity 
             style={styles.actionButton}
@@ -148,7 +139,8 @@ const getItemStatus = (expiryDate) => {
 };
 
 const InventoryScreen = ({ navigation, onBack }) => {
-  const { getUsername, getUserType } = useAuth();
+  const { getUsername, getUserId } = useAuth();
+  const userId = getUserId();
   
   const handleGoToHome = () => {
     if (onBack) {
@@ -161,15 +153,17 @@ const InventoryScreen = ({ navigation, onBack }) => {
   };
 
   const [inventoryList, setInventoryList] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [itemName, setItemName] = useState('');
   const [quantity, setQuantity] = useState('');
+  const [cost, setCost] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showUnitPicker, setShowUnitPicker] = useState(false);
   const [selectedUnit, setSelectedUnit] = useState('pcs');
-  const [viewMode, setViewMode] = useState('all'); // 'all', 'fresh', 'expiring', 'expired'
+  const [viewMode, setViewMode] = useState('all');
 
   const units = [
     { label: "Pieces", value: "pcs" },
@@ -180,6 +174,52 @@ const InventoryScreen = ({ navigation, onBack }) => {
     { label: "Pounds", value: "lbs" },
   ];
 
+  // Fetch inventory items from Supabase
+  const fetchInventory = async () => {
+    try {
+      setLoading(true);
+      
+      if (!userId) {
+        console.log('No userId available');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Fetching inventory for user:', userId);
+
+      // Use withUserContext to ensure RLS context is set
+      const { data, error } = await withUserContext(userId, async () => {
+        return await supabase
+          .from('inventory')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+      });
+
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+
+      console.log('Fetched inventory items:', data?.length || 0);
+      setInventoryList(data || []);
+    } catch (error) {
+      console.error('Error fetching inventory:', error);
+      Alert.alert('Error', 'Failed to load inventory items. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load inventory on mount and when userId changes
+  useEffect(() => {
+    if (userId) {
+      fetchInventory();
+    } else {
+      setLoading(false);
+    }
+  }, [userId]);
+
   const onDateChange = (event, selectedDate) => {
     setShowDatePicker(false);
     if (selectedDate) {
@@ -189,43 +229,134 @@ const InventoryScreen = ({ navigation, onBack }) => {
     }
   };
 
-  const addItem = () => {
+  const addItem = async () => {
     if (!itemName.trim() || !quantity.trim() || !expiryDate.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
-    const newItem = {
-      id: Date.now().toString(),
-      name: itemName.trim(),
-      quantity: `${quantity.trim()} ${selectedUnit}`,
-      expiryDate: expiryDate.trim(),
-      dateAdded: new Date().toISOString().split('T')[0],
-    };
+    if (!userId) {
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
 
-    setInventoryList([...inventoryList, newItem]);
-    setItemName('');
-    setQuantity('');
-    setExpiryDate('');
-    setModalVisible(false);
-    
-    Alert.alert('Success', 'Item added to inventory! 🎉');
+    try {
+      const newItem = {
+        user_id: userId,
+        item_name: itemName.trim(),
+        quantity: parseInt(quantity.trim()),
+        unit: selectedUnit,
+        expiry_date: expiryDate.trim(),
+        cost: cost.trim() ? parseFloat(cost.trim()) : null,
+      };
+
+      console.log('Adding item:', newItem);
+
+      const { data, error } = await withUserContext(userId, async () => {
+        return await supabase
+          .from('inventory')
+          .insert([newItem])
+          .select();
+      });
+
+      if (error) {
+        console.error('Error adding item:', error);
+        throw error;
+      }
+
+      console.log('Item added successfully:', data);
+
+      // Add to local state
+      if (data && data.length > 0) {
+        setInventoryList([data[0], ...inventoryList]);
+      }
+
+      // Reset form
+      setItemName('');
+      setQuantity('');
+      setCost('');
+      setExpiryDate('');
+      setSelectedUnit('pcs');
+      setModalVisible(false);
+      
+      Alert.alert('Success', 'Item added to inventory! 🎉');
+    } catch (error) {
+      console.error('Error adding item:', error);
+      Alert.alert('Error', 'Failed to add item to inventory. Please try again.');
+    }
+  };
+
+  const updateItemQuantity = async (item, newQuantity) => {
+    try {
+      if (newQuantity <= 0) {
+        await deleteItem(item.item_id);
+        return;
+      }
+
+      const { error } = await withUserContext(userId, async () => {
+        return await supabase
+          .from('inventory')
+          .update({ quantity: newQuantity })
+          .eq('item_id', item.item_id)
+          .eq('user_id', userId); // Extra security
+      });
+
+      if (error) {
+        console.error('Error updating quantity:', error);
+        throw error;
+      }
+
+      // Update local state
+      setInventoryList(inventoryList.map(i => 
+        i.item_id === item.item_id 
+          ? { ...i, quantity: newQuantity }
+          : i
+      ));
+
+      Alert.alert('Updated', `${item.item_name} quantity updated!`);
+    } catch (error) {
+      console.error('Error updating item:', error);
+      Alert.alert('Error', 'Failed to update item. Please try again.');
+    }
+  };
+
+  const deleteItem = async (itemId) => {
+    try {
+      const { error } = await withUserContext(userId, async () => {
+        return await supabase
+          .from('inventory')
+          .delete()
+          .eq('item_id', itemId)
+          .eq('user_id', userId); // Extra security
+      });
+
+      if (error) {
+        console.error('Error deleting item:', error);
+        throw error;
+      }
+
+      // Update local state
+      setInventoryList(inventoryList.filter(i => i.item_id !== itemId));
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      Alert.alert('Error', 'Failed to delete item. Please try again.');
+    }
   };
 
   const handleCook = (item) => {
     Alert.alert(
-      'Cook with ' + item.name,
+      'Cook with ' + item.item_name,
       'Navigate to recipe suggestions?',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Find Recipes', 
           onPress: () => {
-            // Navigate to Smart Meal Plan or Recipe Screen
             if (navigation && navigation.navigate) {
-              navigation.navigate('SmartMealPlan', { ingredient: item.name });
+              navigation.navigate('SmartMealPlan', { ingredient: item.item_name });
+            } else {
+              Alert.alert('Feature Coming Soon', 'Recipe suggestions will be here!');
             }
-            Alert.alert('Feature Coming Soon', 'Recipe suggestions will be here!');
           }
         },
       ]
@@ -235,32 +366,21 @@ const InventoryScreen = ({ navigation, onBack }) => {
   const handleMarkUsed = (item) => {
     Alert.alert(
       'Mark as Used',
-      `Update quantity for ${item.name}?`,
+      `Update quantity for ${item.item_name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Reduce by Half',
-          onPress: () => {
-            const [qty, unit] = item.quantity.split(' ');
-            const newQty = parseFloat(qty) / 2;
-            if (newQty <= 0) {
-              setInventoryList(inventoryList.filter(i => i.id !== item.id));
-              Alert.alert('Item Removed', `${item.name} has been used up!`);
-            } else {
-              setInventoryList(inventoryList.map(i => 
-                i.id === item.id 
-                  ? { ...i, quantity: `${newQty} ${unit}` }
-                  : i
-              ));
-              Alert.alert('Updated', `${item.name} quantity reduced!`);
-            }
+          onPress: async () => {
+            const newQty = Math.floor(item.quantity / 2);
+            await updateItemQuantity(item, newQty);
           }
         },
         {
           text: 'Remove Completely',
-          onPress: () => {
-            setInventoryList(inventoryList.filter(i => i.id !== item.id));
-            Alert.alert('Removed', `${item.name} marked as fully used! ✓`);
+          onPress: async () => {
+            await deleteItem(item.item_id);
+            Alert.alert('Removed', `${item.item_name} marked as fully used! ✓`);
           },
           style: 'destructive'
         },
@@ -271,17 +391,17 @@ const InventoryScreen = ({ navigation, onBack }) => {
   const handleWaste = (item) => {
     Alert.alert(
       '🗑️ Mark as Waste',
-      `Record ${item.name} as food waste?`,
+      `Record ${item.item_name} as food waste?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Yes, Wasted',
-          onPress: () => {
-            // TODO: Save to waste tracking for analytics
-            setInventoryList(inventoryList.filter(i => i.id !== item.id));
+          onPress: async () => {
+            // TODO: Add to waste_tracking table for analytics
+            await deleteItem(item.item_id);
             Alert.alert(
               'Recorded',
-              `${item.name} marked as waste. This will help improve future suggestions.`,
+              `${item.item_name} marked as waste. This will help improve future suggestions.`,
               [{ text: 'OK' }]
             );
           },
@@ -291,37 +411,30 @@ const InventoryScreen = ({ navigation, onBack }) => {
     );
   };
 
-  const deleteItem = (itemId) => {
-    Alert.alert(
-      'Delete Item',
-      'Are you sure you want to delete this item?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          onPress: () => {
-            setInventoryList(inventoryList.filter(item => item.id !== itemId));
-          },
-        },
-      ]
-    );
-  };
-
   // Filter items based on view mode
   const getFilteredItems = () => {
     if (viewMode === 'all') return inventoryList;
-    return inventoryList.filter(item => getItemStatus(item.expiryDate) === viewMode);
+    return inventoryList.filter(item => getItemStatus(item.expiry_date) === viewMode);
   };
 
   // Calculate statistics
   const getStats = () => {
-    const fresh = inventoryList.filter(i => getItemStatus(i.expiryDate) === 'fresh').length;
-    const expiring = inventoryList.filter(i => getItemStatus(i.expiryDate) === 'expiring').length;
-    const expired = inventoryList.filter(i => getItemStatus(i.expiryDate) === 'expired').length;
+    const fresh = inventoryList.filter(i => getItemStatus(i.expiry_date) === 'fresh').length;
+    const expiring = inventoryList.filter(i => getItemStatus(i.expiry_date) === 'expiring').length;
+    const expired = inventoryList.filter(i => getItemStatus(i.expiry_date) === 'expired').length;
     return { fresh, expiring, expired, total: inventoryList.length };
   };
 
   const stats = getStats();
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#4ECDC4" />
+        <Text style={{ marginTop: 16, color: '#718096' }}>Loading inventory...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -423,7 +536,7 @@ const InventoryScreen = ({ navigation, onBack }) => {
                 onWaste={handleWaste}
               />
             )}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.item_id.toString()}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
           />
@@ -438,7 +551,7 @@ const InventoryScreen = ({ navigation, onBack }) => {
         <Text style={styles.floatingAddButtonText}>+</Text>
       </TouchableOpacity>
 
-      {/* Add Item Modal - Same as before but with updated styling */}
+      {/* Add Item Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -474,6 +587,15 @@ const InventoryScreen = ({ navigation, onBack }) => {
                 <Text style={styles.dropdownArrow}>▼</Text>
               </TouchableOpacity>
             </View>
+
+            <TextInput
+              style={styles.modernInput}
+              placeholder="Cost (Optional, e.g., 50)"
+              value={cost}
+              onChangeText={setCost}
+              keyboardType="decimal-pad"
+              placeholderTextColor="#999"
+            />
             
             <TouchableOpacity
               style={styles.modernDateInput}
@@ -492,6 +614,7 @@ const InventoryScreen = ({ navigation, onBack }) => {
                   setModalVisible(false);
                   setItemName('');
                   setQuantity('');
+                  setCost('');
                   setExpiryDate('');
                 }}
               >
