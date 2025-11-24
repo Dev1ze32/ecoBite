@@ -14,7 +14,7 @@ export default {
       supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   
       webhookUrl: process.env.EXPO_PUBLIC_WEBHOOK_URL,
-      webhookKey: process.env.EXPO_PUBLIC_WEBHOOK_KEY,
+      apiKey: process.env.EXPO_PUBLIC_API_KEY,
     },
   },
 };

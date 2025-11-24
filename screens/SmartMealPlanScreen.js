@@ -3,14 +3,15 @@ import React, { useState, useRef, useEffect } from 'react'
 import styles from './styles/SmartMealPlanScreenStyles';
 import { useAuth } from '../data/AuthContext';
 import { supabase } from '../data/supabase';
-import { sendWebhook } from '../data/ai_webhook';
+import { sendWebhook, getConversationHistory } from '../data/ai_webhook';
 
 const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
-  const { user, getUserId, getUsername, getUserType } = useAuth();
+  const { getUserId, getUsername, getUserType } = useAuth();
   
   const [currentPrompt, setCurrentPrompt] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingConversations, setIsLoadingConversations] = useState(true)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const scrollViewRef = useRef(null)
   
   const [conversationTabs, setConversationTabs] = useState([])
@@ -30,19 +31,19 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
   useEffect(() => {
     const userId = getUserId();
     console.log('SmartMealPlan - Current User ID:', userId);
-    console.log('SmartMealPlan - Username:', getUsername());
-    console.log('SmartMealPlan - User Type:', getUserType());
     
     if (userId) {
       loadUserConversations();
     }
   }, []);
 
+  // 1. Load the list of "Folders" (Conversations) from Supabase
   const loadUserConversations = async () => {
     try {
       setIsLoadingConversations(true);
       const userId = getUserId();
 
+      // Only fetch the container info, not the messages
       const { data: conversations, error: convError } = await supabase
         .from('Conversations')
         .select('*')
@@ -56,33 +57,13 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         return;
       }
 
-      const conversationIds = conversations.map(c => c.conversation_id);
-      const { data: messages, error: msgError } = await supabase
-        .from('messages')
-        .select('*')
-        .in('conversation_id', conversationIds)
-        .order('created_at', { ascending: true });
-
-      if (msgError) throw msgError;
-
-      const messagesByConversation = {};
-      messages?.forEach(msg => {
-        if (!messagesByConversation[msg.conversation_id]) {
-          messagesByConversation[msg.conversation_id] = [];
-        }
-        messagesByConversation[msg.conversation_id].push({
-          id: msg.id.toString(),
-          type: msg.sender === 'user' ? 'user' : 'ai',
-          message: msg.content,
-          timestamp: msg.created_at
-        });
-      });
-
+      // Initialize tabs. 'loaded' flag tells us if we've fetched API history yet.
       const tabs = conversations.map(conv => ({
         id: conv.conversation_id,
         title: conv.title,
-        messages: messagesByConversation[conv.conversation_id] || [],
-        createdAt: conv.created_at
+        messages: [], 
+        createdAt: conv.created_at,
+        loaded: false 
       }));
 
       setConversationTabs(tabs);
@@ -91,13 +72,48 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         setActiveTabId(tabs[0].id);
       }
 
-      console.log(`Loaded ${tabs.length} conversations with messages`);
+      console.log(`Loaded ${tabs.length} conversations (Index only)`);
     } catch (error) {
       console.error('Error loading conversations:', error);
       Alert.alert('Error', 'Failed to load conversations. Creating a new one.');
       await createDefaultConversation();
     } finally {
       setIsLoadingConversations(false);
+    }
+  };
+
+  // 2. Watch for Tab Changes -> Fetch History from Agent API
+  useEffect(() => {
+    if (activeTabId) {
+      const tab = conversationTabs.find(t => t.id === activeTabId);
+      if (tab && !tab.loaded) {
+        loadHistoryForTab(activeTabId);
+      }
+    }
+  }, [activeTabId]);
+
+  const loadHistoryForTab = async (threadId) => {
+    setIsLoadingHistory(true);
+    try {
+        console.log(`Fetching history for thread: ${threadId}`);
+        // Call your Python API to get history from checkpoints
+        const history = await getConversationHistory(threadId);
+        
+        setConversationTabs(prev => prev.map(tab => {
+            if (tab.id === threadId) {
+                return {
+                    ...tab,
+                    // If API returns empty (new chat), keep empty array or default
+                    messages: history.length > 0 ? history : tab.messages,
+                    loaded: true
+                };
+            }
+            return tab;
+        }));
+    } catch (error) {
+        console.error("Failed to load history", error);
+    } finally {
+        setIsLoadingHistory(false);
     }
   };
 
@@ -120,17 +136,8 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
 
       const conversationId = newConversation.conversation_id;
 
-      const { error: msgError } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender: 'ai',
-          content: welcomeMessage,
-          created_at: new Date().toISOString()
-        });
-
-      if (msgError) throw msgError;
-
+      // We don't save to 'messages' table anymore. 
+      // We just update local state so the user sees the welcome immediately.
       const newTab = {
         id: conversationId,
         title: 'General Chat',
@@ -140,7 +147,8 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
           message: welcomeMessage,
           timestamp: new Date().toISOString()
         }],
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        loaded: true // Marked true so we don't try to fetch empty history
       };
 
       setConversationTabs([newTab]);
@@ -155,63 +163,26 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
 
   // Scroll to bottom when new messages are added
   useEffect(() => {
+    // Safety check 1: Ensure ref exists before setting timeout
     if (scrollViewRef.current) {
-      scrollViewRef.current.scrollToEnd({ animated: true })
+        setTimeout(() => {
+            // Safety check 2: Ensure ref STILL exists when timeout fires (using ?.)
+            scrollViewRef.current?.scrollToEnd({ animated: true })
+        }, 100);
     }
-  }, [activeConversation?.messages])
+  }, [activeConversation?.messages, isLoading, isLoadingHistory])
 
-  // Save message to database
-  const saveMessageToDatabase = async (conversationId, sender, content) => {
-    try {
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender: sender,
-          content: content,
-          created_at: new Date().toISOString()
-        });
-
-      if (error) throw error;
-      console.log('Message saved to database');
-    } catch (error) {
-      console.error('Error saving message:', error);
-    }
-  };
-
-  // Get AI response from webhook
-  const generateAIResponse = async (prompt) => {
-    setIsLoading(true)
-    
-    try {
-      const sessionId = activeTabId;
-      
-      console.log('Sending to AI webhook:', { sessionId, prompt });
-      
-      const aiResponse = await sendWebhook(sessionId.toString(), prompt);
-      
-      console.log('AI Response received:', aiResponse);
-      
-      if (!aiResponse) {
-        throw new Error('No response from AI');
-      }
-      
-      setIsLoading(false);
-      return aiResponse;
-    } catch (error) {
-      console.error('Error calling AI webhook:', error);
-      setIsLoading(false);
-      return `I apologize, but I'm having trouble processing your request right now. Please try again in a moment.`;
-    }
-  }
 
   const handleSendPrompt = async () => {
     if (!currentPrompt.trim()) return
     
+    const promptText = currentPrompt.trim()
+    
+    // 1. Optimistic UI Update (Show user message immediately)
     const userMessage = {
       id: Date.now().toString(),
       type: 'user',
-      message: currentPrompt.trim(),
+      message: promptText,
       timestamp: new Date().toISOString()
     }
     
@@ -221,14 +192,18 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         : tab
     ))
     
-    const promptText = currentPrompt.trim()
     setCurrentPrompt('')
-
-    await saveMessageToDatabase(activeTabId, 'user', promptText);
     
+    // Note: We REMOVED saveMessageToDatabase(activeTabId, 'user', promptText);
+    // The Python Agent will save it to 'checkpoints' automatically.
+
     try {
-      const aiResponse = await generateAIResponse(promptText)
+      setIsLoading(true);
       
+      // 2. Call API
+      const aiResponse = await sendWebhook(activeTabId.toString(), promptText);
+      
+      // 3. Update UI with AI Response
       const aiMessage = {
         id: (Date.now() + 1).toString(),
         type: 'ai',
@@ -242,8 +217,7 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
           : tab
       ))
 
-      await saveMessageToDatabase(activeTabId, 'ai', aiResponse);
-
+      // Optional: Update 'updated_at' in Supabase Conversations for sorting
       await supabase
         .from('Conversations')
         .update({ updated_at: new Date().toISOString() })
@@ -252,6 +226,8 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
     } catch (error) {
       console.error('Error generating AI response:', error)
       Alert.alert('Error', 'Failed to get AI response. Please try again.')
+    } finally {
+        setIsLoading(false);
     }
   }
 
@@ -267,7 +243,7 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
 
     try {
       const userId = getUserId();
-      const welcomeMessage = "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?";
+      const welcomeMessage = "Hi! How can I help you with this new topic?";
 
       const { data: newConversation, error: convError } = await supabase
         .from('Conversations')
@@ -283,17 +259,7 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
 
       const conversationId = newConversation.conversation_id;
 
-      const { error: msgError } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender: 'ai',
-          content: welcomeMessage,
-          created_at: new Date().toISOString()
-        });
-
-      if (msgError) throw msgError;
-
+      // Update Local State Only
       const newTab = {
         id: conversationId,
         title: newTabTitle.trim(),
@@ -303,7 +269,8 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
           message: welcomeMessage,
           timestamp: new Date().toISOString()
         }],
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        loaded: true
       };
 
       setConversationTabs(prev => [...prev, newTab]);
@@ -334,11 +301,8 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await supabase
-                .from('messages')
-                .delete()
-                .eq('conversation_id', tabId);
-
+              // We only delete the Index from Supabase. 
+              // The checkpoints in Agent memory remain but become inaccessible (orphaned), which is fine.
               await supabase
                 .from('Conversations')
                 .delete()
@@ -365,7 +329,7 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
   const clearConversation = () => {
     Alert.alert(
       'Clear Conversation',
-      'Are you sure you want to clear this conversation?',
+      'This will start a fresh history for this topic. Continue?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -373,37 +337,52 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              const welcomeMessage = "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?";
+              // Strategy: To "Clear" memory in LangGraph without a complex API call,
+              // we delete the current Conversation ID and make a NEW one with the same title.
+              // This gives us a fresh 'thread_id' for the Agent.
+              
+              const currentTab = conversationTabs.find(t => t.id === activeTabId);
+              if (!currentTab) return;
 
-              await supabase
-                .from('messages')
-                .delete()
-                .eq('conversation_id', activeTabId);
+              const userId = getUserId();
+              const oldId = activeTabId;
+              const title = currentTab.title;
+              const welcomeMessage = "Conversation cleared. What would you like to know?";
 
-              await supabase
-                .from('messages')
+              // 1. Delete Old Index
+              await supabase.from('Conversations').delete().eq('conversation_id', oldId);
+
+              // 2. Create New Index (Same Title)
+              const { data: newConv, error } = await supabase
+                .from('Conversations')
                 .insert({
-                  conversation_id: activeTabId,
-                  sender: 'ai',
-                  content: welcomeMessage,
-                  created_at: new Date().toISOString()
-                });
+                    user_id: userId,
+                    title: title,
+                    created_at: new Date().toISOString()
+                })
+                .select()
+                .single();
 
-              setConversationTabs(prev => prev.map(tab => 
-                tab.id === activeTabId 
-                  ? {
-                      ...tab,
-                      messages: [{
-                        id: `welcome_${Date.now()}`,
-                        type: 'ai',
-                        message: welcomeMessage,
-                        timestamp: new Date().toISOString()
-                      }]
-                    }
-                  : tab
-              ));
+              if (error) throw error;
 
-              console.log('Conversation cleared:', activeTabId);
+              // 3. Replace in UI
+              const newTab = {
+                  id: newConv.conversation_id,
+                  title: title,
+                  messages: [{
+                    id: `welcome_${Date.now()}`,
+                    type: 'ai',
+                    message: welcomeMessage,
+                    timestamp: new Date().toISOString()
+                  }],
+                  createdAt: new Date().toISOString(),
+                  loaded: true
+              };
+
+              setConversationTabs(prev => prev.map(t => t.id === oldId ? newTab : t));
+              setActiveTabId(newConv.conversation_id);
+
+              console.log('Conversation cleared (Re-created with new ID):', newConv.conversation_id);
             } catch (error) {
               console.error('Error clearing conversation:', error);
               Alert.alert('Error', 'Failed to clear conversation');
@@ -415,6 +394,7 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
   }
 
   const formatMessage = (message) => {
+    if (!message) return null;
     return message
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .split('\n')
@@ -479,7 +459,8 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
               ]}>
                 {tab.title}
               </Text>
-              {tab.messages.length > 1 && (
+              {/* Only show badge if we have messages loaded and more than just the welcome */}
+              {tab.loaded && tab.messages.length > 1 && (
                 <View style={styles.messageBadge}>
                   <Text style={styles.messageBadgeText}>
                     {tab.messages.length - 1}
@@ -504,27 +485,37 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         contentContainerStyle={styles.conversationContent}
         showsVerticalScrollIndicator={false}
       >
-        {activeConversation?.messages.map((message) => (
-          <View 
-            key={message.id} 
-            style={[
-              styles.messageContainer, 
-              message.type === 'user' ? styles.userMessage : styles.aiMessage
-            ]}
-          >
-            <View style={styles.messageHeader}>
-              <Text style={styles.messageAuthor}>
-                {message.type === 'user' ? 'You' : 'EcoBite AI'}
-              </Text>
-              <Text style={styles.messageTimestamp}>
-                {new Date(message.timestamp).toLocaleTimeString()}
-              </Text>
+        {/* Show specific loading indicator when fetching history for a tab */}
+        {isLoadingHistory ? (
+             <View style={{padding: 20, alignItems: 'center'}}>
+                 <ActivityIndicator size="small" color="#4ECDC4" />
+                 <Text style={{color: '#999', marginTop: 10}}>Loading history...</Text>
+             </View>
+        ) : (
+            activeConversation?.messages.map((message, index) => (
+            <View 
+                key={message.id || index} 
+                style={[
+                styles.messageContainer, 
+                message.type === 'user' ? styles.userMessage : styles.aiMessage
+                ]}
+            >
+                <View style={styles.messageHeader}>
+                <Text style={styles.messageAuthor}>
+                    {message.type === 'user' ? 'You' : 'EcoBite AI'}
+                </Text>
+                {message.timestamp && (
+                    <Text style={styles.messageTimestamp}>
+                        {new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </Text>
+                )}
+                </View>
+                <View style={styles.messageContent}>
+                {formatMessage(message.message)}
+                </View>
             </View>
-            <View style={styles.messageContent}>
-              {formatMessage(message.message)}
-            </View>
-          </View>
-        ))}
+            ))
+        )}
         
         {isLoading && (
           <View style={[styles.messageContainer, styles.aiMessage]}>
@@ -539,7 +530,8 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
         )}
       </ScrollView>
 
-      {activeConversation?.messages.length <= 1 && (
+      {/* Show suggestions only if we have very few messages */}
+      {(!isLoadingHistory && activeConversation?.messages.length <= 1) && (
         <View style={styles.suggestionsContainer}>
           <Text style={styles.suggestionsTitle}>Try asking:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>

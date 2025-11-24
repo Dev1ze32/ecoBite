@@ -1,79 +1,91 @@
-// ai_webhook.js - React Native compatible version
-// Place this in: data/ai_webhook.js
 import 'react-native-url-polyfill/auto'
-import Constants from 'expo-constants'
 
-const WEBHOOK_URL = Constants.expoConfig?.extra?.webhookUrl;
-const WEBHOOK_KEY = Constants.expoConfig?.extra?.webhookKey;
-if (!WEBHOOK_URL || !WEBHOOK_KEY) {
-  console.error('Missing Webhook environment variables!');
-  throw new Error('Missing Webhook environment variables');
-}
+// DIRECT ACCESS: Uses variables from your .env file
+//Constants.expoConfig?.extra?.webhookUrl;
+const BASE_URL = process.env.EXPO_PUBLIC_WEBHOOK_URL;
+const API_KEY = process.env.EXPO_PUBLIC_API_KEY;
+
+// Debug checks to help you spot missing config immediately
+if (!BASE_URL) console.error('Missing EXPO_PUBLIC_WEBHOOK_URL in .env file');
+if (!API_KEY) console.error('Missing EXPO_PUBLIC_API_KEY in .env file');
 
 /**
- * Send a message to the AI webhook and get a response
- * @param {string} sessionId - Unique session/conversation ID
- * @param {string} message - User's message to the AI
- * @returns {Promise<string>} - AI's response 
+ * Send a message to the Python API (POST)
  */
 export async function sendWebhook(sessionId, message) {
+  if (!BASE_URL) throw new Error('API URL is not configured');
+
   try {
-    console.log('Calling AI webhook with:', { sessionId, message });
+    const cleanBaseUrl = BASE_URL.replace(/\/$/, "");
+    const endpoint = `${cleanBaseUrl}/chat`;
     
-    const response = await fetch(WEBHOOK_URL, {
+    console.log('Sending to AI API:', endpoint);
+
+    const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "key": WEBHOOK_KEY
+      headers: { 
+          "Content-Type": "application/json",
+          "X-API-Key": API_KEY // <--- AUTH HEADER ADDED
       },
       body: JSON.stringify({
-        sessionId: sessionId,
+        thread_id: sessionId, 
         message: message
       })
     });
 
     if (!response.ok) {
-      throw new Error(`Webhook error: ${response.status} ${response.statusText}`);
+        const text = await response.text();
+        // Friendly error for 403 Forbidden (Auth failed)
+        if (response.status === 403) {
+            throw new Error("Authentication Failed: Check your API Key.");
+        }
+        throw new Error(`API Error ${response.status}: ${text}`);
     }
-
-    const data = await response.json();
-    console.log('Webhook response:', data);
     
-    // Return the AI reply from the webhook response
-    return data.ai_reply || data.response || data.message || "I apologize, I couldn't generate a response.";
+    const data = await response.json();
+    return data.response || "I apologize, I couldn't generate a response.";
+
   } catch (error) {
-    console.error("Error calling webhook:", error);
-    throw new Error(`Failed to get AI response: ${error.message}`);
+    console.error("Error calling AI API:", error);
+    throw error;
   }
 }
 
 /**
- * Save message to Supabase (optional - you're already doing this in SmartMealPlanScreen)
- * @param {number} conversationId - Conversation ID
- * @param {string} sender - 'user' or 'ai'
- * @param {string} content - Message content
+ * Fetch conversation history from the Python API (GET)
  */
-export async function saveMessageToSupabase(conversationId, sender, content) {
-  // Import supabase here to avoid circular dependencies
-  const { supabase } = require('./supabase');
-  
-  try {
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        sender: sender,
-        content: content,
-        created_at: new Date().toISOString()
-      })
-      .select();
+export async function getConversationHistory(sessionId) {
+  if (!BASE_URL) {
+    console.warn("Skipping history fetch: No API URL");
+    return [];
+  }
 
-    if (error) throw error;
+  try {
+    const cleanBaseUrl = BASE_URL.replace(/\/$/, "");
+    const endpoint = `${cleanBaseUrl}/history/${sessionId}`;
     
-    console.log('Message saved:', data);
-    return data;
+    console.log('Fetching history from:', endpoint);
+    
+    const response = await fetch(endpoint, {
+        headers: { 
+            "X-API-Key": API_KEY // <--- AUTH HEADER ADDED
+        }
+    });
+    
+    if (!response.ok) {
+      if (response.status === 403) {
+          console.error("History fetch blocked: Invalid API Key");
+          return [];
+      }
+      console.log(`History fetch failed (${response.status}), likely new chat.`);
+      return [];
+    }
+    
+    const data = await response.json();
+    return data.messages || [];
+    
   } catch (error) {
-    console.error('Error saving message:', error);
-    throw error;
+    console.error("Error fetching history:", error);
+    return [];
   }
 }
