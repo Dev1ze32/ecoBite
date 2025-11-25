@@ -96,15 +96,27 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
     setIsLoadingHistory(true);
     try {
         console.log(`Fetching history for thread: ${threadId}`);
-        // Call your Python API to get history from checkpoints
         const history = await getConversationHistory(threadId);
         
+        // Define the welcome message consistent with createDefaultConversation
+        const welcomeMessage = {
+            id: `welcome_${threadId}`, // Unique ID based on thread
+            type: 'ai',
+            message: "Hi! I'm your EcoBite AI assistant. I can help you create meal plans, suggest recipes for your surplus food, reduce waste, and answer any food-related questions. What would you like to know?",
+            timestamp: new Date().toISOString()
+        };
+
         setConversationTabs(prev => prev.map(tab => {
             if (tab.id === threadId) {
+                // 1. If history exists, use the default welcome message.
+                // 2. If history is empty, use the Welcome Message.
+                const messagesToDisplay = history && history.length > 0 
+                    ? history 
+                    : [welcomeMessage];
+
                 return {
                     ...tab,
-                    // If API returns empty (new chat), keep empty array or default
-                    messages: history.length > 0 ? history : tab.messages,
+                    messages: messagesToDisplay,
                     loaded: true
                 };
             }

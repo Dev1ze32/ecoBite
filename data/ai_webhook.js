@@ -1,9 +1,10 @@
 import 'react-native-url-polyfill/auto'
+import Constants from 'expo-constants'
 
 // DIRECT ACCESS: Uses variables from your .env file
 //Constants.expoConfig?.extra?.webhookUrl;
-const BASE_URL = process.env.EXPO_PUBLIC_WEBHOOK_URL;
-const API_KEY = process.env.EXPO_PUBLIC_API_KEY;
+const BASE_URL = Constants.expoConfig?.extra?.webhookUrl;
+const API_KEY = Constants.expoConfig?.extra?.apiKey;
 
 // Debug checks to help you spot missing config immediately
 if (!BASE_URL) console.error('Missing EXPO_PUBLIC_WEBHOOK_URL in .env file');
