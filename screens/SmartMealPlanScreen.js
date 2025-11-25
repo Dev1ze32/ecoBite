@@ -95,8 +95,11 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
   const loadHistoryForTab = async (threadId) => {
     setIsLoadingHistory(true);
     try {
-        console.log(`Fetching history for thread: ${threadId}`);
-        const history = await getConversationHistory(threadId);
+        const userId = getUserId(); // <--- Get User ID
+        console.log(`Fetching history for thread: ${threadId}, user: ${userId}`);
+        
+        // <--- Pass userId to getConversationHistory
+        const history = await getConversationHistory(threadId, userId); 
         
         // Define the welcome message consistent with createDefaultConversation
         const welcomeMessage = {
@@ -189,6 +192,7 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
     if (!currentPrompt.trim()) return
     
     const promptText = currentPrompt.trim()
+    const userId = getUserId(); // <--- Get User ID
     
     // 1. Optimistic UI Update (Show user message immediately)
     const userMessage = {
@@ -213,7 +217,8 @@ const SmartMealPlanScreen = ({ navigation, userInventory = [] }) => {
       setIsLoading(true);
       
       // 2. Call API
-      const aiResponse = await sendWebhook(activeTabId.toString(), promptText);
+      // <--- Pass userId to sendWebhook
+      const aiResponse = await sendWebhook(activeTabId.toString(), promptText, userId);
       
       // 3. Update UI with AI Response
       const aiMessage = {
